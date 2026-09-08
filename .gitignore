@@ -1,0 +1,13 @@
+# Generated secrets - never commit these
+.session_salt
+.flask_secret
+
+# Sample test CSVs
+*test*.csv
+
+# Per-user uploaded CSVs
+sessions/
+
+# Python
+__pycache__/
+*.pyc
