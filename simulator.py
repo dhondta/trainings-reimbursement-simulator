@@ -6,12 +6,19 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from fractions import Fraction
 from pathlib import Path
 
 
 # =================================================== CONFIGURATION ====================================================
 BASE_THRESHOLD = Decimal("5000.00")
 REPAYMENT_MONTHS = 24
+# Optional minimum rendement rate, in € per month of service (NOT part of the law, which always spreads the degression
+#  over REPAYMENT_MONTHS, i.e. price / 24 per month): when set, each month served pays off at least this amount of the
+#  course's price, so that a cheap triggering course no longer ties the employee down for the full 24 months. Like
+#  BASE_THRESHOLD, it is a base amount, indexed with the coefficient applicable in the month being served - so the rate
+#  rises with the index during a rendement period. None (the default) keeps the behavior prescribed by the current law.
+MIN_RENDEMENT_RATE: Decimal | None = None
 # Maximum validity period of a rendement period (art. 179, §5): once this delay has elapsed since the period started,
 #  the clause no longer produces any effect — the reimbursement obligation for this course lapses, even if the 24 months
 #  of rendement have not been served.
@@ -35,19 +42,23 @@ class Course:
 
 @dataclass
 class Rendement:
+    """ A rendement period, accounted as a balance: the course's price, paid off month after month of service at the
+     rate given by monthly_rate (price / 24 as of the law, so exactly 24 months). Amounts are kept as exact fractions,
+     so that 24 × price / 24 adds up to the price to the cent. """
     course: Course
     start_date: date                         # First day of the full month following the course.
     months_served: int = 0                   # Number of rendement months actually completed.
-    required_months: int = REPAYMENT_MONTHS  # Always 24 months in total.
+    served: Fraction = Fraction(0)           # Part of the price already paid off by these months of rendement.
     cap_months: int = CAP_MONTHS             # Validity period of the clause for this period (art. 179, §5).
+    min_rate: Decimal | None = None          # Base (non-indexed) minimum rendement rate, if any.
     
     @property
-    def months_remaining(self) -> int:
-        return max(0, self.required_months - self.months_served)
+    def balance(self) -> Fraction:
+        return max(Fraction(0), Fraction(self.course.price) - self.served)
     
     @property
     def completed(self) -> bool:
-        return self.months_remaining == 0
+        return self.balance == 0
     
     @property
     def cap_date(self) -> date:
@@ -57,6 +68,23 @@ class Rendement:
     
     def capped_at(self, at_date: date) -> bool:
         return at_date >= self.cap_date
+    
+    def monthly_rate(self, month: date) -> Fraction:
+        """ Part of the price paid off by one month of rendement served in the given month: price / 24 as of the law,
+         raised to the minimum rendement rate indexed at that month, if any. """
+        rate = Fraction(self.course.price) / REPAYMENT_MONTHS
+        if self.min_rate is not None:
+            rate = max(rate, Fraction(indexed_min_rate(month, self.min_rate)))
+        return rate
+    
+    def months_to_clear(self, balance: Fraction, from_month: date) -> int:
+        """ Number of consecutive months of rendement, starting from from_month, needed to pay off the given balance.
+         Months past the last known index use its coefficient (the last indexation period is open-ended). """
+        months, month = 0, from_month
+        while balance > 0:
+            balance -= min(balance, self.monthly_rate(month))
+            months, month = months + 1, next_month(month)
+        return months
 
 
 # ====================================================== HELPERS =======================================================
@@ -76,15 +104,38 @@ def first_day_next_month(d: date) -> date:
 
 
 def index_coefficient(at_date: date) -> Decimal:
+    return index_period(at_date)[2]
+
+
+def index_period(at_date: date) -> tuple[date, date | None, Decimal]:
+    """ The indexation period (start, end or None if open-ended, coefficient) applicable at at_date. """
     for start, end, coefficient in INDEX_VALUES:
         if at_date >= start and (end is None or at_date <= end):
-            return coefficient
+            return start, end, coefficient
     raise ValueError(f"No indexation coefficient defined for {at_date.strftime('%d/%m/%Y')}")
 
 
 def indexed_threshold(at_date: date) -> Decimal:
     coefficient = index_coefficient(at_date)
     return money(BASE_THRESHOLD * coefficient)
+
+
+def indexed_min_rate(at_date: date, min_rate: Decimal | None = MIN_RENDEMENT_RATE) -> Decimal | None:
+    """ The minimum rendement rate (a base amount, like BASE_THRESHOLD) indexed with the coefficient applicable at
+     at_date, or None if no minimum rate is set. """
+    if min_rate is None:
+        return None
+    if min_rate <= 0:
+        raise ValueError("minimum rendement rate must be strictly positive")
+    return money(min_rate * index_coefficient(at_date))
+
+
+def fraction_to_decimal(value: Fraction) -> Decimal:
+    return Decimal(value.numerator) / Decimal(value.denominator)
+
+
+def fraction_to_money(value: Fraction) -> Decimal:
+    return money(fraction_to_decimal(value))
 
 
 def money(value: Decimal) -> Decimal:
@@ -126,25 +177,55 @@ def parse_decimal(value: str) -> Decimal:
 
 
 # ===================================================== MAIN LOGIC =====================================================
+def active_rendement(periods: list[Rendement], month: date) -> tuple[Rendement, Decimal] | None:
+    """ The period actively accruing rendement in the given month (in the full pyramid), with the amount of its price
+     paid off that month, or None if no period is being served. """
+    for current, _available, active, amount in schedule_rendement(periods, next_month(month)):
+        if current == month and active is not None:
+            return active, fraction_to_money(amount)
+    return None
+
+
+def schedule_rendement(periods: list[Rendement], until: date):
+    """ Month by month from the first period's start up to (excluding) until, yields (month, available, active, amount):
+     the periods available that month (started, not yet paid off, clause not expired - art. 179, §5), most recent
+     first, the active one among them (the most recent: it suspends the older ones; None if none is available) and the
+     part of its price paid off that month. Works on local balances: the periods themselves are not modified. """
+    if not periods:
+        return
+    current = min(p.start_date for p in periods)
+    served = {id(p): Fraction(0) for p in periods}
+    while current < until:
+        available = [p for p in periods if p.start_date <= current and served[id(p)] < Fraction(p.course.price) \
+                                           and not p.capped_at(current)]
+        available.sort(key=lambda p: p.start_date, reverse=True)
+        active, amount = (available[0] if available else None), Fraction(0)
+        if active is not None:
+            amount = min(Fraction(active.course.price) - served[id(active)], active.monthly_rate(current))
+            served[id(active)] += amount
+        yield current, available, active, amount
+        current = next_month(current)
+
+
 def build_period_status_timeline(periods: list[Rendement], as_of_date: date) -> dict[str, list[dict]]:
     """ For each period, returns the chronological list of monthly segments grouped by status: 'served' (rendement
      active that month), 'suspended' (a more recent course takes priority), or 'remaining' (months still owed, projected
      past as_of_date for lack of a longer simulation).
 
-    A period stays 'suspended' until ALL periods more recent than it have themselves finished their 24 months of
-     rendement (or until as_of_date, if that comes first, or until its own clause expires — art. 179, §5). To obtain the
-     real end date of each period (and thus an untruncated, pyramid-shaped timeline), the caller must supply an
-     as_of_date far enough ahead to cover the full chain of suspensions.
+    A period stays 'suspended' until ALL periods more recent than it have themselves paid off their price in rendement
+     (or until as_of_date, if that comes first, or until its own clause expires — art. 179, §5). To obtain the real end
+     date of each period (and thus an untruncated, pyramid-shaped timeline), the caller must supply an as_of_date far
+     enough ahead to cover the full chain of suspensions.
 
     Past its own cap_date, a period no longer appears among the available ones (the clause has expired) and no
      'remaining' segment is added for it: the outstanding balance is wiped out, not carried forward.
 
-    Does not modify periods[i].months_served (local counters, as in print_timeline).
+    Does not modify the periods (local counters, see schedule_rendement).
     """
     if not periods:
         return {}
-    current, served = min(p.start_date for p in periods), {id(p): 0 for p in periods}
     runs: dict[int, list[dict]] = {id(p): [] for p in periods}
+    served = {id(p): Fraction(0) for p in periods}
     def add_month(period, month_start, status):
         month_end = next_month(month_start)
         period_runs = runs[id(period)]
@@ -152,73 +233,79 @@ def build_period_status_timeline(periods: list[Rendement], as_of_date: date) -> 
             period_runs[-1]["end"] = month_end
         else:
             period_runs.append({'start': month_start, 'end': month_end, 'status': status})
-    while current < as_of_date:
-        if available := [p for p in periods if p.start_date <= current and served[id(p)] < REPAYMENT_MONTHS \
-                                               and not p.capped_at(current)]:
-            available.sort(key=lambda p: p.start_date, reverse=True)
-            active = available[0]
-            served[id(active)] += 1
-            for p in available:
-                add_month(p, current, "served" if p is active else "suspended")
-        current = next_month(current)
+    for current, available, active, amount in schedule_rendement(periods, as_of_date):
+        if active is not None:
+            served[id(active)] += amount
+        for p in available:
+            add_month(p, current, "served" if p is active else "suspended")
     result = {}
     for p in periods:
         period_runs = list(runs[id(p)])
-        months_remaining = (0 if p.capped_at(as_of_date) else max(0, REPAYMENT_MONTHS - served[id(p)]))
-        if months_remaining > 0:
+        if not p.capped_at(as_of_date):
             start = (period_runs[-1]["end"] if period_runs else p.start_date)
-            period_runs.append({'start': start, 'end': add_months(start, months_remaining), 'status': "remaining"})
+            balance = max(Fraction(0), Fraction(p.course.price) - served[id(p)])
+            if months_remaining := p.months_to_clear(balance, start):
+                period_runs.append({'start': start, 'end': add_months(start, months_remaining), 'status': "remaining"})
         result[p.course.code] = period_runs
     return result
 
 
-def build_rendement_periods(triggering_courses: list[Course], cap_months: int = CAP_MONTHS) -> list[Rendement]:
+def build_rendement_periods(triggering_courses: list[Course], cap_months: int = CAP_MONTHS,
+                            min_rate: Decimal | None = MIN_RENDEMENT_RATE) -> list[Rendement]:
+    if min_rate is not None and min_rate <= 0:
+        raise ValueError("minimum rendement rate must be strictly positive")
     periods = []
     for c in triggering_courses:
-        periods.append(Rendement(course=c, start_date=first_day_next_month(c.end_date), cap_months=cap_months))
+        periods.append(Rendement(course=c, start_date=first_day_next_month(c.end_date), cap_months=cap_months,
+                                 min_rate=min_rate))
     return sorted(periods, key=lambda p: p.start_date)
 
 
 def calculate_reimbursement(periods: list[Rendement], departure_date: date) -> tuple[Decimal, list[dict]]:
     if not periods:
         return Decimal("0.00"), []
-    # Each rendement period has 24 months of rendement STILL TO BE SERVED.
+    # Each rendement period has its price STILL TO BE PAID OFF in months of rendement.
     # When a new period starts:
     #     new period = active
     #     old period = suspended
-    # When the new period ends, the old one resumes with its previous counter.
-    current = min(p.start_date for p in periods)
-    while current < departure_date:
-        # Courses whose rendement has started, are still owed, and whose clause has not expired (art. 179, §5).
-        available = [p for p in periods if p.start_date <= current and not p.completed and not p.capped_at(current)]
-        if available:  # The most recent course takes priority. It suspends the older periods.
-            available.sort(key=lambda p: p.start_date, reverse=True)
-            active = available[0]
+    # When the new period ends, the old one resumes with its previous balance.
+    for _current, _available, active, amount in schedule_rendement(periods, departure_date):
+        if active is not None:
             active.months_served += 1
-        current = next_month(current)
+            active.served += amount
     # Financial calculation
     details, total = [], Decimal("0.00")
     for period in periods:
         # Once the clause's validity period has elapsed, the obligation lapses: nothing more is owed for this course,
-        #  even if the 24 months have not been served. The number of months thus forgiven is exposed explicitly
-        #  (months_forgiven) so the total stays auditable: a zero balance because the service is complete can be
-        #  distinguished from a zero balance because it was forgiven under art. 179, §5.
+        #  even if its price has not been fully paid off. The amount (and projected months) thus forgiven are exposed
+        #  explicitly (amount_forgiven, months_forgiven) so the total stays auditable: a zero balance because the
+        #  service is complete can be distinguished from a zero balance because it was forgiven under art. 179, §5.
+        # A course not yet completed at the departure date (e.g. a departure date in the past, before a later course)
+        #  was never followed, so it cannot be owed.
+        taken = period.course.end_date < departure_date
         capped = period.capped_at(departure_date)
-        uncapped_remaining = period.months_remaining
+        balance = fraction_to_money(period.balance)
+        # Months still owed, projected from the departure date on (at the rate(s) of the months to come).
+        uncapped_remaining = period.months_to_clear(period.balance, departure_date) if taken else 0
         remaining = 0 if capped else uncapped_remaining
-        months_forgiven = uncapped_remaining if capped else 0
-        reimbursement = money(period.course.price * Decimal(remaining) / Decimal(REPAYMENT_MONTHS))
+        reimbursement = Decimal("0.00") if capped or not taken else balance
         total += reimbursement
         details.append({
             "course":           period.course.code,
             "course_end":       period.course.end_date,
             "rendement_start":  period.start_date,
             "cost":             period.course.price,
+            "required_months":  period.months_served + uncapped_remaining,
+            "monthly_rate":     None if period.completed else fraction_to_money(period.monthly_rate(departure_date)),
+            "min_rate":         period.min_rate,
             "months_served":    period.months_served,
             "months_remaining": remaining,
             "reimbursement":    reimbursement,
+            "taken":            taken,
             "capped":           capped,
-            "months_forgiven":  months_forgiven,
+            "months_forgiven":  uncapped_remaining if capped else 0,
+            # Unrounded, so that a sum of forgiven amounts is only rounded once.
+            "amount_forgiven":  fraction_to_decimal(period.balance) if capped else Decimal("0"),
         })
     return money(total), details
 
@@ -311,48 +398,51 @@ def print_triggering_courses(audit: list[dict]) -> None:
 
 def print_reimbursement_details(details: list[dict]) -> None:
     print("\nDETAILS OF THE REIMBURSEMENT" + "=" * 120)
-    print(header := f"{'Course':8} {'Fin':12} {'Start':12} {'Cost':12} {'Served':8} {'Remaining':8} " \
-                    f"{'Reimbursement':16} {'Status':16}")
+    with_min_rate = any(row["min_rate"] is not None for row in details)
+    print(header := f"{'Course':8} {'Fin':12} {'Start':12} {'Cost':12} {'Required':8} {'Served':8} {'Remaining':8} " \
+                    f"{'Reimbursement':16} {'Status':16}" + (" Rate (this month)" if with_min_rate else ""))
     print("-" * len(header))
     for row in details:
-        status = f"CAPPED (-{row['months_forgiven']}m)" if row["months_forgiven"] > 0 else ("CAPPED" if row["capped"] else "")
+        status = f"CAPPED (-{row['months_forgiven']}m)" if row["months_forgiven"] > 0 else \
+                 ("CAPPED" if row["capped"] else "" if row["taken"] else "NOT YET TAKEN")
         print(f"{row['course']:8} {row['course_end'].strftime('%d/%m/%Y'):12} "
-              f"{row['rendement_start'].strftime('%d/%m/%Y'):12} {row['cost']:>10.2f} € {row['months_served']:>7} "
-              f"{row['months_remaining']:>7} {row['reimbursement']:>14.2f} € {status:16}")
+              f"{row['rendement_start'].strftime('%d/%m/%Y'):12} {row['cost']:>10.2f} € {row['required_months']:>8} "
+              f"{row['months_served']:>7} "
+              f"{row['months_remaining']:>7} {row['reimbursement']:>14.2f} € {status:16}"
+              + (f" {row['monthly_rate']:>10.2f} €/month" if with_min_rate and row["monthly_rate"] is not None \
+                 else ""))
     forgiven_rows = [row for row in details if row["months_forgiven"] > 0]
     if forgiven_rows:
-        forgiven_amount = money(sum((row["cost"] * Decimal(row["months_forgiven"]) / Decimal(REPAYMENT_MONTHS) \
-                                     for row in forgiven_rows), Decimal("0.00")))
+        forgiven_amount = money(sum((row["amount_forgiven"] for row in forgiven_rows), Decimal("0.00")))
         print(f"\n{len(forgiven_rows)} capped period(s) (expired, as of Art. 179 §5) : "
               f"{forgiven_amount:.2f}€ off, not accounted in the total.")
 
 
 def print_timeline(periods: list[Rendement], departure_date: date) -> None:
     print("\nTIMELINE OF RENDEMENT" + "=" * 120)
-    current = min(p.start_date for p in periods)
-    # Local copy of the counters, so as not to modify the actual results.
-    served = {id(p): 0 for p in periods}
-    while current < departure_date:
-        if available := [p for p in periods if p.start_date <= current and served[id(p)] < REPAYMENT_MONTHS \
-                                               and not p.capped_at(current)]:
-            available.sort(key=lambda p: p.start_date, reverse=True)
-            active = available[0]
-            served[id(active)] += 1
-            print(f"{current.strftime('%m/%Y')} : {active.course.code}")
+    with_min_rate = any(p.min_rate is not None for p in periods)
+    # Local balances (see schedule_rendement), so as not to modify the actual results.
+    for current, _available, active, amount in schedule_rendement(periods, departure_date):
+        if active is not None:
+            print(f"{current.strftime('%m/%Y')} : {active.course.code}"
+                  + (f" ({fraction_to_money(amount):.2f}€)" if with_min_rate else ""))
         else:
             print(f"{current.strftime('%m/%Y')} : no active rendement")
-        current = next_month(current)
 
 
-def simulate(courses: list[Course], departure_date: date, verbose: bool = True, cap_months: int = CAP_MONTHS) -> Decimal:
+def simulate(courses: list[Course], departure_date: date, verbose: bool = True, cap_months: int = CAP_MONTHS,
+             min_rate: Decimal | None = MIN_RENDEMENT_RATE) -> Decimal:
     triggering_courses, audit = determine_triggering_courses(courses)
-    periods = build_rendement_periods(triggering_courses, cap_months=cap_months)
+    periods = build_rendement_periods(triggering_courses, cap_months=cap_months, min_rate=min_rate)
     total, details = calculate_reimbursement(periods, departure_date)
     if verbose:
         print("\n" + "=" * 120)
         print(f"SIMULATION - start at {departure_date.strftime('%d/%m/%Y')}")
         print("=" * 120)
         print(f"Indexed threshold at this date : {indexed_threshold(departure_date):.2f}€")
+        if min_rate is not None:
+            print(f"Indexed minimum rendement rate at this date : "
+                  f"{indexed_min_rate(departure_date, min_rate):.2f}€/month")
         print_triggering_courses(audit)
         print_reimbursement_details(details)
         print("\n" + "=" * 120)
@@ -369,8 +459,14 @@ def main() -> int:
     parser.add_argument("--timeline", action="store_true", help="include reimbursement timeline")
     parser.add_argument("--cap-years", type=int, default=CAP_YEARS, help="maximum validity of a reimbursement period ; "
                                                                          f"{CAP_YEARS} years as of art. 179, §5")
+    parser.add_argument("--min-rate", type=parse_decimal, default=MIN_RENDEMENT_RATE,
+                        help="minimum rendement rate in € per month, shortening the rendement period of cheaper "
+                             "courses ; base amount, indexed like the threshold with the coefficient of each month "
+                             f"served (not as of the law, which always spreads it over {REPAYMENT_MONTHS} months)")
     args = parser.parse_args()
     cap_months = args.cap_years * 12
+    if args.min_rate is not None and args.min_rate <= 0:
+        parser.error("--min-rate must be strictly positive")
     try:
         courses = load_courses(args.csv)
     except Exception as exc:
@@ -381,11 +477,15 @@ def main() -> int:
     print("=" * 120)
     print(f"File: {args.csv}")
     print(f"Number of trainings: {len(courses)}")
+    if args.min_rate is not None:
+        print(f"Minimum rendement rate: {args.min_rate:.2f}€/month base, indexed with the coefficient of each month "
+              f"served (today: {indexed_min_rate(date.today(), args.min_rate):.2f}€/month) - not as of the law: "
+              "shorter periods for cheaper courses")
     for departure_date in departure_dates:
-        simulate(courses, departure_date, cap_months=cap_months)
+        simulate(courses, departure_date, cap_months=cap_months, min_rate=args.min_rate)
     if args.timeline:  # optional timeline
         triggering_courses, _ = determine_triggering_courses(courses)
-        periods = build_rendement_periods(triggering_courses, cap_months=cap_months)
+        periods = build_rendement_periods(triggering_courses, cap_months=cap_months, min_rate=args.min_rate)
         if periods:
             print(f"\nTIMELINE UNTIL {max(departure_dates).strftime('%d/%m/%Y')}")
             print_timeline(periods, max(departure_dates))

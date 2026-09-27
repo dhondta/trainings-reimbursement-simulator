@@ -6,14 +6,11 @@ STRINGS = {
         "app_title": "Simulateur de remboursement des formations - Loi du 31/07/13, Art. 179",
         "load_label": "Charger un jeu de formations :",
         "preset_placeholder": "Charger un preset…",
-        "browse_label": "Parcourir…",
+        "browse_label": "Importer un CSV",
         "export_label": "Exporter en CSV",
         "upload_error": "Impossible de charger le fichier : {error}",
         "auth_required": "Vous devez être connecté(e) pour charger un fichier.",
         "add_row": "Ajouter une ligne",
-        "move_up_label": "▲ Monter",
-        "move_down_label": "▼ Descendre",
-        "move_no_selection": "Sélectionnez d'abord une ligne (bouton radio à gauche) pour la déplacer.",
         "col_course": "Formation",
         "col_price": "Prix (€)",
         "col_end_date": "Date de fin (jj/mm/aaaa)",
@@ -44,15 +41,26 @@ STRINGS = {
             "Au {date}, {n_active} période(s) sont activement prestées et {n_suspended} sont suspendues "
             "derrière une formation plus récente."
         ),
-        "explanation_cap_none": "Aucune période n'a encore atteint sa limite de validité de 15 ans (Art. 179, §5).",
+        "explanation_cap_none": "Aucune période n'a encore atteint sa limite de validité de {years} ans "
+                                "(Art. 179, §5).",
         "explanation_cap_some": (
-            "{n_capped} période(s) ont atteint leur limite de validité de 15 ans et ont vu leur solde restant "
+            "{n_capped} période(s) ont atteint leur limite de validité de {years} ans et ont vu leur solde restant "
             "remis, en application de l'Art. 179 §5 : {amount} €."
+        ),
+        "explanation_cap_custom": (
+            "Hors loi : la limite de validité d'une période de rendement est fixée à {years} ans au lieu des "
+            "{law_years} ans prévus par l'Art. 179, §5."
+        ),
+        "explanation_min_rate": (
+            "Hors loi : un taux de rendement minimal de {rate} €/mois (montant de base, indexé chaque mois comme le "
+            "seuil, soit {rate_now} €/mois ce mois-ci, avec l'indice {index} applicable depuis le {index_since}) est "
+            "appliqué, ce qui raccourcit la période de rendement (et "
+            "accélère la dégression) de {n_shortened} formation(s) moins coûteuse(s)."
         ),
         "departure_label": "Date de départ envisagée :",
         "no_valid_courses": "Aucune formation valide.",
-        "total_label": "Total à rembourser (au {date})",
-        "final_date_label": "Date de fin du rendement",
+        "total_label": "Total à rembourser",
+        "period_label": "Période de rendement",
         "final_date_none": "Aucune formation ne déclenche l'obligation.",
         "bar_title_default": "Montant dégressif à rembourser par formation",
         "bar_title": "Montant dégressif à rembourser par formation (au {date})",
@@ -66,11 +74,12 @@ STRINGS = {
         "served": "Presté",
         "suspended": "Suspendu",
         "remaining": "Restant",
+        "expired": "Expiré",
         "departure_marker": "Départ",
-        "rate_label": "Taux de rendement (mois suivant)",
+        "rate_label": "Taux de rendement",
         "rate_detail": "{code} - {month}",
         "rate_pct": "{pct}% du montant restant",
-        "rate_none": "Aucune formation n'est prestée le mois suivant.",
+        "rate_none": "Aucune formation n'est prestée ce mois-ci.",
         "err_missing_code": "Ligne {i} : code de formation manquant.",
         "err_invalid_price": "Ligne {i} ({code}) : prix invalide ({exc}).",
         "err_invalid_date": "Ligne {i} ({code}) : date invalide ({exc}).",
@@ -80,14 +89,11 @@ STRINGS = {
         "app_title": "Simulator voor terugbetaling van opleidingen - Wet van 31/07/13, Art. 179",
         "load_label": "Een reeks opleidingen laden:",
         "preset_placeholder": "Een preset laden…",
-        "browse_label": "Bladeren…",
+        "browse_label": "CSV importeren",
         "export_label": "Exporteren naar CSV",
         "upload_error": "Kan het bestand niet laden: {error}",
         "auth_required": "U moet aangemeld zijn om een bestand te uploaden.",
         "add_row": "Rij toevoegen",
-        "move_up_label": "▲ Omhoog",
-        "move_down_label": "▼ Omlaag",
-        "move_no_selection": "Selecteer eerst een rij (keuzerondje links) om te verplaatsen.",
         "col_course": "Opleiding",
         "col_price": "Prijs (€)",
         "col_end_date": "Einddatum (dd/mm/jjjj)",
@@ -118,15 +124,26 @@ STRINGS = {
             "maand. Op {date} worden {n_active} periode(n) actief gepresteerd en zijn {n_suspended} geschorst "
             "achter een recentere opleiding."
         ),
-        "explanation_cap_none": "Geen enkele periode heeft nog haar geldigheidslimiet van 15 jaar bereikt (Art. 179, §5).",
+        "explanation_cap_none": "Geen enkele periode heeft nog haar geldigheidslimiet van {years} jaar bereikt "
+                                "(Art. 179, §5).",
         "explanation_cap_some": (
-            "{n_capped} periode(n) hebben hun geldigheidslimiet van 15 jaar bereikt en hun resterend saldo werd "
+            "{n_capped} periode(n) hebben hun geldigheidslimiet van {years} jaar bereikt en hun resterend saldo werd "
             "kwijtgescholden, conform Art. 179 §5: {amount} €."
+        ),
+        "explanation_cap_custom": (
+            "Buiten de wet: de geldigheidslimiet van een rendementsperiode is vastgesteld op {years} jaar in plaats "
+            "van de {law_years} jaar voorzien door Art. 179, §5."
+        ),
+        "explanation_min_rate": (
+            "Buiten de wet: er geldt een minimaal rendementspercentage van {rate} €/maand (basisbedrag, elke maand "
+            "geïndexeerd zoals de drempel, d.w.z. {rate_now} €/maand deze maand, met de index {index} van toepassing "
+            "sinds {index_since}), waardoor de rendementsperiode (en "
+            "de degressie) van {n_shortened} goedkopere opleiding(en) korter wordt."
         ),
         "departure_label": "Beoogde vertrekdatum:",
         "no_valid_courses": "Geen geldige opleiding.",
-        "total_label": "Terug te betalen bedrag (op {date})",
-        "final_date_label": "Einddatum van het rendement",
+        "total_label": "Terug te betalen bedrag",
+        "period_label": "Rendementsperiode",
         "final_date_none": "Geen enkele opleiding activeert de verplichting.",
         "bar_title_default": "Degressief terug te betalen bedrag per opleiding",
         "bar_title": "Degressief terug te betalen bedrag per opleiding (op {date})",
@@ -140,11 +157,12 @@ STRINGS = {
         "served": "Gepresteerd",
         "suspended": "Geschorst",
         "remaining": "Resterend",
+        "expired": "Verlopen",
         "departure_marker": "Vertrek",
-        "rate_label": "Rendementspercentage (volgende maand)",
+        "rate_label": "Rendementspercentage",
         "rate_detail": "{code} - {month}",
         "rate_pct": "{pct}% van het resterende bedrag",
-        "rate_none": "Geen enkele opleiding wordt de volgende maand gepresteerd.",
+        "rate_none": "Geen enkele opleiding wordt deze maand gepresteerd.",
         "err_missing_code": "Rij {i}: opleidingscode ontbreekt.",
         "err_invalid_price": "Rij {i} ({code}): ongeldige prijs ({exc}).",
         "err_invalid_date": "Rij {i} ({code}): ongeldige datum ({exc}).",
@@ -154,14 +172,11 @@ STRINGS = {
         "app_title": "Training Reimbursement Simulator - Law of 31/07/13 Art. 179",
         "load_label": "Load a set of courses:",
         "preset_placeholder": "Load a preset…",
-        "browse_label": "Browse…",
+        "browse_label": "Import CSV",
         "export_label": "Export CSV",
         "upload_error": "Could not load the file: {error}",
         "auth_required": "You must be signed in to upload a file.",
         "add_row": "Add row",
-        "move_up_label": "▲ Move up",
-        "move_down_label": "▼ Move down",
-        "move_no_selection": "Select a row first (radio button on the left) to move it.",
         "col_course": "Course",
         "col_price": "Price (€)",
         "col_end_date": "End date (dd/mm/yyyy)",
@@ -191,15 +206,25 @@ STRINGS = {
             "month. As of {date}, {n_active} period(s) are actively accruing service and {n_suspended} are "
             "suspended behind a more recent one."
         ),
-        "explanation_cap_none": "No period has yet reached its 15-year validity limit (Art. 179, §5).",
+        "explanation_cap_none": "No period has yet reached its {years}-year validity limit (Art. 179, §5).",
         "explanation_cap_some": (
-            "{n_capped} period(s) have reached their 15-year validity limit and had their remaining balance "
+            "{n_capped} period(s) have reached their {years}-year validity limit and had their remaining balance "
             "forgiven, per Art. 179 §5: {amount} €."
+        ),
+        "explanation_cap_custom": (
+            "Beyond the law: the validity limit of a rendement period is set to {years} years instead of the "
+            "{law_years} years provided by Art. 179, §5."
+        ),
+        "explanation_min_rate": (
+            "Beyond the law: a minimum rendement rate of {rate} €/month (base amount, indexed every month like the "
+            "threshold, i.e. {rate_now} €/month this month, with the index value {index} applicable since "
+            "{index_since}) is applied, which shortens the rendement period (and "
+            "speeds up the degression) of {n_shortened} cheaper course(s)."
         ),
         "departure_label": "Planned departure date:",
         "no_valid_courses": "No valid course.",
-        "total_label": "Total to reimburse (on {date})",
-        "final_date_label": "Final rendement end date",
+        "total_label": "Total to reimburse",
+        "period_label": "Rendement period",
         "final_date_none": "No course triggers the obligation.",
         "bar_title_default": "Degressive amount to reimburse per course",
         "bar_title": "Degressive amount to reimburse per course (on {date})",
@@ -213,11 +238,12 @@ STRINGS = {
         "served": "Served",
         "suspended": "Suspended",
         "remaining": "Remaining",
+        "expired": "Expired",
         "departure_marker": "Departure",
-        "rate_label": "Rendement rate (next month)",
+        "rate_label": "Rendement rate",
         "rate_detail": "{code} - {month}",
         "rate_pct": "{pct}% of the remaining amount",
-        "rate_none": "No course is being served next month.",
+        "rate_none": "No course is being served this month.",
         "err_missing_code": "Row {i}: missing course code.",
         "err_invalid_price": "Row {i} ({code}): invalid price ({exc}).",
         "err_invalid_date": "Row {i} ({code}): invalid date ({exc}).",

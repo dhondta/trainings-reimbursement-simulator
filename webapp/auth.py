@@ -13,7 +13,8 @@ import urllib.request
 from datetime import datetime
 from email.message import EmailMessage
 
-from dash import Input, Output, State, dcc, html, no_update
+import dash_bootstrap_components as dbc
+from dash import Input, Output, State, html, no_update
 from flask import Response, has_request_context, redirect, request, session
 from werkzeug.security import check_password_hash
 
@@ -38,59 +39,62 @@ def render_login_view():
     return render_otp_login_view()
 
 
+def login_card(intro: str, *body) -> dbc.Container:
+    """ The frame shared by every login form: a centered card titled with the app's name. """
+    return dbc.Container(
+        dbc.Row(
+            dbc.Col(
+                dbc.Card([
+                    dbc.CardHeader(html.H5(STRINGS[config.DEFAULT_LANG]["app_title"], className="mb-0"),
+                                   class_name="bg-primary text-white py-3"),
+                    dbc.CardBody([html.P(intro, className="text-muted"), *body]),
+                ], class_name="shadow-sm"),
+                md=8, lg=6, xl=5,
+            ),
+            justify="center",
+        ),
+        class_name="py-5",
+    )
+
+
 def render_oauth_login_view():
-    return html.Div([
-        html.H2(STRINGS[config.DEFAULT_LANG]["app_title"]),
-        html.P("Sign in with your Google account to continue.", style={"color": "#555"}),
-        html.A(html.Button("Sign in with Google", id="oauth-google-btn"), href="/auth/google/login"),
-    ])
+    return login_card(
+        "Sign in with your Google account to continue.",
+        dbc.Button([html.I(className="bi bi-google me-2"), "Sign in with Google"], id="oauth-google-btn",
+                   href="/auth/google/login", external_link=True, color="primary", class_name="w-100"),
+    )
 
 
 def render_otp_login_view():
     """ Shared by --auth otp-smtp and --auth otp-http: same email + code UI, only the delivery transport differs
      (see deliver_otp). """
-    return html.Div([
-        html.H2(STRINGS[config.DEFAULT_LANG]["app_title"]),
-        html.P(
-            "Enter your email address to receive an 8-digit verification code.",
-            style={"color": "#555"},
-        ),
-        html.Div(
-            style={"display": "flex", "gap": "8px", "marginBottom": "8px"},
-            children=[
-                dcc.Input(id="auth-email", type="email", placeholder="you@example.com",
-                           style={"width": "260px"}),
-                html.Button("Send code", id="auth-send-btn", n_clicks=0),
-            ],
-        ),
-        html.Div(id="auth-status", style={"color": "#555", "marginBottom": "12px"}),
+    return login_card(
+        "Enter your email address to receive an 8-digit verification code.",
+        dbc.InputGroup([
+            dbc.Input(id="auth-email", type="email", placeholder="you@example.com"),
+            dbc.Button("Send code", id="auth-send-btn", n_clicks=0, color="primary"),
+        ], class_name="mb-2"),
+        html.Div(id="auth-status", className="small text-muted mb-3", style={"whiteSpace": "pre-line"}),
         html.Div(
             id="auth-otp-row",
-            style={"display": "none", "gap": "8px", "alignItems": "center"},
-            children=[
-                dcc.Input(id="auth-otp", type="text", placeholder="8-digit code", maxLength=config.OTP_LENGTH,
-                           style={"width": "140px"}),
-                html.Button("Verify", id="auth-verify-btn", n_clicks=0),
-            ],
+            style={"display": "none"},
+            children=dbc.InputGroup([
+                dbc.Input(id="auth-otp", type="text", placeholder="8-digit code", maxLength=config.OTP_LENGTH),
+                dbc.Button("Verify", id="auth-verify-btn", n_clicks=0, color="success"),
+            ]),
         ),
-        html.Div(id="auth-error", style={"color": "crimson", "marginTop": "8px"}),
-    ])
+        html.Div(id="auth-error", className="small text-danger mt-2"),
+    )
 
 
 def render_password_login_view():
-    return html.Div([
-        html.H2(STRINGS[config.DEFAULT_LANG]["app_title"]),
-        html.P("Enter your username and password.", style={"color": "#555"}),
-        html.Div(
-            style={"display": "flex", "gap": "8px", "marginBottom": "8px"},
-            children=[
-                dcc.Input(id="auth-username", type="text", placeholder="username", style={"width": "180px"}),
-                dcc.Input(id="auth-password", type="password", placeholder="password", style={"width": "180px"}),
-                html.Button("Sign in", id="auth-password-btn", n_clicks=0),
-            ],
-        ),
-        html.Div(id="auth-error", style={"color": "crimson", "marginTop": "8px"}),
-    ])
+    return login_card(
+        "Enter your username and password.",
+        dbc.Input(id="auth-username", type="text", placeholder="username", class_name="mb-2"),
+        dbc.Input(id="auth-password", type="password", placeholder="password", class_name="mb-3"),
+        dbc.Button("Sign in", id="auth-password-btn", n_clicks=0, color="primary", class_name="w-100"),
+        html.Div(id="auth-error", className="small text-danger mt-2"),
+    )
 
 
 def send_otp_email_http(to_email: str, code: str) -> bool:
@@ -249,7 +253,7 @@ def require_basic_auth():
               State("auth-email", "value"), prevent_initial_call=True)
 def send_otp(n_clicks, email):
     email = (email or "").strip().lower()
-    hidden, shown = {"display": "none"}, {"display": "flex", "gap": "8px", "alignItems": "center"}
+    hidden, shown = {"display": "none"}, {}
     if not config.EMAIL_RE.match(email):
         return "Please enter a valid email address.", hidden
     now, pending = datetime.now(), config.PENDING_OTPS.get(email)

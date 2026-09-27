@@ -22,6 +22,13 @@ Two ways to use it:
   accrues service each month - older ones are suspended until it is fully served.
 - **Cap (Art. 179, §5)**: a rendement period's clause stops producing any effect 15 years after it started,
   regardless of how much of it was actually served - the remaining balance is forgiven, not carried forward.
+- **Minimum rendement rate** *(optional, not part of the law)*: off by default. The law pays off `price / 24` per
+  month of rendement; when a minimum rate `R` €/month is set, each month served pays off `max(price / 24, R × index)`
+  instead, where `index` is the coefficient applicable in that month (like the €5,000 threshold, `R` is a base amount,
+  e.g. 250 € gives 552 €/month with the 2.2080 coefficient). The reimbursement is the price not yet paid off, and the
+  period ends when it is fully paid off (its last month settling the remainder) - so a cheap triggering course no
+  longer ties the employee down for two full years at a low monthly rate, and the rate rises with the index during a
+  period.
 
 None of this is legal advice; the indexation table and the 15-year cap are configurable (see below) and should be
 checked against the applicable text before relying on this for anything official.
@@ -30,6 +37,8 @@ checked against the applicable text before relying on this for anything official
 
 - Python 3.10+
 - [Dash](https://pypi.org/project/dash/) (pulls in Flask and Plotly)
+- [Dash Bootstrap Components](https://pypi.org/project/dash-bootstrap-components/) for the web dashboard's look
+  (Bootswatch *Flatly* theme and Bootstrap Icons, loaded from a CDN - see `THEME` in `webapp/config.py`)
 
 ```bash
 pip install -r requirements.txt
@@ -95,6 +104,9 @@ python3 simulator.py my-formations.csv --timeline
 
 # Override the 15-year validity cap (Art. 179, §5), in years
 python3 simulator.py my-formations.csv --cap-years 10
+
+# Enforce a minimum rendement rate of 250 €/month base, indexed (not part of the law: shortens cheaper courses' periods)
+python3 simulator.py my-formations.csv --min-rate 250
 ```
 
 ## Web dashboard
@@ -109,16 +121,27 @@ Then open <http://127.0.0.1:8050>. Run it with `--local` to skip sign-in entirel
 python3 dash_app.py --local
 ```
 
+The same `--cap-years` and `--min-rate` options as the command-line tool are available, so their effect can be
+visualized too (they can also be set through the `CAP_YEARS` / `MIN_RENDEMENT_RATE` environment variables, e.g. under
+`wsgi.py`); any value departing from the law is called out in the dashboard's explanation panel:
+
+```bash
+python3 dash_app.py --local --cap-years 10 --min-rate 250
+```
+
 Features:
 
-- Editable, reorderable course table (add/delete/move rows, or upload/browse a CSV), and export of the current table
-  back to a CSV in the same format as for import.
+- Editable course table, kept sorted by end date (add/delete rows, or import a CSV), and export of the current table
+  back to a CSV in the same format as for import. Prices and dates are reformatted as they're entered (e.g.
+  `4.174,85 €` → `4174.85`, `2024-11-07` → `07/11/24`).
 - Presets: every CSV in the repo root (plus the user's own uploads) that complies with the [CSV format](#csv-format)
   is offered in the preset dropdown; any other CSV, such as `index_values.csv`, is ignored.
-- A slider over every month from next month up to the actual date the whole course list becomes fully resolved.
+- A slider over every month from the start of the first rendement period (to look back at past departure dates) up
+  to the actual date the whole course list becomes fully resolved; it starts on next month. A course is only owed
+  once it has been completed, i.e. for departure dates after its end date.
 - A vertical bar chart of the degressive amount owed per course (fixed y-axis, so bars visibly shrink as you move
   the slider forward), a horizontal Gantt-style chart of each rendement period's served/suspended/remaining history,
-  and cards for the total owed, the final rendement end date, and next month's rendement rate.
+  and cards for the total owed, the rendement period (start and end dates), and the current month's rendement rate.
 - A dynamic explanation panel that restates the four criteria above with the actual numbers for the current
   simulation.
 - English, French and Dutch UI (selector in the top-right).
@@ -179,6 +202,8 @@ default `--auth otp-smtp`).
 | `GOOGLE_CLIENT_ID` | *(unset)* | OAuth 2.0 client ID for `--auth oauth-google`. |
 | `GOOGLE_CLIENT_SECRET` | *(unset)* | OAuth 2.0 client secret for `--auth oauth-google`. |
 | `GOOGLE_REDIRECT_URI` | *(unset)* | Must exactly match the redirect URI registered in Google Cloud Console, e.g. `https://<host>/auth/google/callback`. |
+| `CAP_YEARS` | `15` | Validity cap of a rendement period, in years (Art. 179, §5). Overridden by `--cap-years`. |
+| `MIN_RENDEMENT_RATE` | *(unset)* | Minimum rendement rate in €/month, as a base amount indexed like the threshold (see [How the rule is modeled](#how-the-rule-is-modeled)). Unset keeps the law's 24-month periods. Overridden by `--min-rate`. |
 | `SESSION_SALT` | auto-generated, persisted to `.session_salt` | Salt used to hash identities into session keys. |
 | `FLASK_SECRET_KEY` | auto-generated, persisted to `.flask_secret` | Signs the session cookie. |
 

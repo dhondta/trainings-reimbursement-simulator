@@ -1,0 +1,35 @@
+/* Complements the Bootstrap theme (see THEME in config.py) where Dash's own components don't follow it. Served
+   automatically by Dash from this assets/ folder. */
+
+/* Dash core components (slider, dropdown): use the theme's accent color instead of Dash's default purple. */
+:root {
+    --Dash-Fill-Interactive-Strong: #3498DB;
+    --Dash-Fill-Interactive-Weak: rgba(52, 152, 219, 0.15);
+    --Dash-Fill-Primary-Hover: rgba(52, 152, 219, 0.10);
+    --Dash-Fill-Primary-Active: rgba(52, 152, 219, 0.20);
+}
+
+/* Language selector: dbc.RadioItems styled as a joined group of toggle buttons (its per-option wrappers would otherwise
+   break Bootstrap's .btn-group). */
+.lang-toggle .form-check {
+    padding-left: 0;
+    margin: 0;
+}
+.lang-toggle .form-check + .form-check .btn {
+    margin-left: -1px;
+}
+.lang-toggle .form-check:not(:first-child) .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+.lang-toggle .form-check:not(:last-child) .btn {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* Courses table: the theme's font rather than DataTable's monospace default. */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner input {
+    font-family: var(--bs-body-font-family) !important;
+}

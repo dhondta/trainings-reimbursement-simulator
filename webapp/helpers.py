@@ -10,7 +10,8 @@ from pathlib import Path
 
 from dash import html
 
-from simulator import Course, REPAYMENT_MONTHS, add_months, build_period_status_timeline, parse_date, parse_decimal
+from simulator import Course, REPAYMENT_MONTHS, add_months, build_period_status_timeline, build_rendement_periods, \
+                      money, parse_date, parse_decimal
 
 from . import config
 from .auth import session_dir
@@ -41,9 +42,13 @@ def final_rendement_date(periods) -> date | None:
     return max(ends) if ends else None
 
 
+def icon_label(icon: str, text: str) -> list:
+    """ Button content: a Bootstrap icon (e.g. "upload" for bi-upload) followed by its label. """
+    return [html.I(className=f"bi bi-{icon} me-2"), text]
+
+
 def info_card(label: str, message: str) -> list:
-    return [html.Div(label, style={"fontWeight": "bold", "marginBottom": "8px"}),
-            html.Div(message, style={"color": "#777"})]
+    return [html.Div(label, className="fw-semibold text-secondary mb-2"), html.Div(message, className="text-muted")]
 
 
 def load_preset_rows(name: str, presets: dict[str, Path]) -> list[dict]:
@@ -52,7 +57,7 @@ def load_preset_rows(name: str, presets: dict[str, Path]) -> list[dict]:
         for row in csv.DictReader(f):
             rows.append({'Course': row["Course"].strip(), 'Price': row["Price"].strip(),
                          'End Date': row["End Date"].strip()})
-    return rows
+    return sort_rows_by_date(normalize_rows(rows))
 
 
 def rows_to_csv(rows: list[dict]) -> str:
@@ -68,6 +73,21 @@ def rows_to_csv(rows: list[dict]) -> str:
     return buffer.getvalue()
 
 
+def normalize_rows(rows: list[dict]) -> list[dict]:
+    """ Course-table rows with their values in the table's canonical format: prices with two decimals and a dot (e.g.
+     "4.174,85 €" -> "4174.85"), dates as DD/MM/YY (e.g. "2024-11-07" -> "07/11/24"). A value that can't be parsed is
+     left as typed, so that rows_to_courses still reports it. """
+    def normalize(value, parse, fmt):
+        try:
+            return fmt(parse(value)) if (value or "").strip() else value
+        except (ValueError, ArithmeticError):
+            return value
+    return [{**row,
+             'Price': normalize(row.get("Price"), parse_decimal, lambda v: f"{money(v):.2f}"),
+             'End Date': normalize(row.get("End Date"), parse_date, lambda d: d.strftime("%d/%m/%y"))}
+            for row in rows]
+
+
 def presets_for_session() -> dict[str, Path]:
     """Bundled presets combined with this user's own uploaded CSVs (if they are signed in). A same-named upload shadows
      a bundled preset for that user only - the bundled file on disk is never touched."""
@@ -79,6 +99,12 @@ def presets_for_session() -> dict[str, Path]:
         if config.is_course_csv(f):
             presets[f.name] = f
     return presets
+
+
+def rendement_periods(triggering_courses: list[Course]) -> list:
+    """ The triggering courses' rendement periods, built with the app-wide validity cap and minimum rendement rate. """
+    return build_rendement_periods(triggering_courses, cap_months=config.CAP_YEARS * 12,
+                                   min_rate=config.MIN_RENDEMENT_RATE)
 
 
 def rows_to_courses(rows: list[dict], lang: str = config.DEFAULT_LANG) -> tuple[list[Course], list[str]]:
@@ -109,13 +135,21 @@ def rows_to_courses(rows: list[dict], lang: str = config.DEFAULT_LANG) -> tuple[
     return sorted(courses, key=lambda c: c.end_date), errors
 
 
-def slider_marks(max_months: int) -> dict:
-    marks = {}
-    for i in range(max_months + 1):
-        d = date_at(i)
-        if d.month == 1 or i == 0 or i == max_months:
-            marks[i] = d.strftime("%Y")
-    return marks
+def slider_marks(min_months: int, max_months: int) -> dict:
+    """ One mark per year, on January, labeled with the year only (the exact selected date is shown above the slider).
+     Falls back to marking the range's start if it spans no January at all. """
+    marks = {i: date_at(i).strftime("%Y") for i in range(min_months, max_months + 1) if date_at(i).month == 1}
+    return marks or {min_months: date_at(min_months).strftime("%Y")}
+
+
+def slider_min_months(periods) -> int:
+    """ The (zero or negative) slider index of the earliest rendement period's start, so that the departure date can be
+     set back in time to the very beginning of the rendement periods; index 0 (next month) stays the default. """
+    if not periods:
+        return 0
+    earliest_start = min(p.start_date for p in periods)
+    return min(0, (earliest_start.year - config.SLIDER_START.year) * 12
+                  + (earliest_start.month - config.SLIDER_START.month))
 
 
 def slider_max_months(periods) -> int:
@@ -123,6 +157,17 @@ def slider_max_months(periods) -> int:
     if final_date is None or final_date <= config.SLIDER_START:
         return config.FALLBACK_SLIDER_MONTHS
     return (final_date.year - config.SLIDER_START.year) * 12 + (final_date.month - config.SLIDER_START.month)
+
+
+def sort_rows_by_date(rows: list[dict]) -> list[dict]:
+    """ Course-table rows sorted by ascending end date. The sort is stable (same-date rows keep their order), and rows
+     whose date is empty or not (yet) valid - e.g. a freshly added row - stay at the bottom, in their current order. """
+    def key(row):
+        try:
+            return 0, parse_date(row.get("End Date") or "")
+        except ValueError:
+            return 1, date.min
+    return sorted(rows, key=key)
 
 
 def split_at_departure(runs: list[dict], departure_date: date) -> list[dict]:
@@ -167,7 +212,7 @@ def timeline_horizon(periods) -> date:
     return add_months(earliest_start, len(periods) * REPAYMENT_MONTHS + 1)
 
 
-def value_card(label: str, value: str, *extra: object) -> list:
-    return [html.Div(label, style={"fontWeight": "bold", "marginBottom": "8px"}),
-            html.Div(value, style={"fontSize": "28px", "fontWeight": "bold", "color": "#2E86AB"}), *extra]
+def value_card(label: str, value: str | list, *extra: object, font_size: str = "28px") -> list:
+    return [html.Div(label, className="fw-semibold text-secondary mb-2"),
+            html.Div(value, className="fw-bold text-primary text-nowrap", style={"fontSize": font_size}), *extra]
 
