@@ -12,7 +12,7 @@ import secrets
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from simulator import INDEX_VALUES_CSV, add_months
+from simulator import add_months, load_courses
 
 HERE = Path(__file__).parent.parent  # repo root: webapp/ lives one level below it
 
@@ -32,6 +32,18 @@ def _persisted_secret(env_var: str, filename: str) -> str:
     return value
 
 
+def is_course_csv(path: Path) -> bool:
+    """ Whether a file is a valid course list, i.e. a CSV that the upload itself would accept (Course, Price, End Date
+     columns with parseable values) - which de facto excludes other data CSVs such as the indexation table."""
+    if path.suffix != ".csv":
+        return False
+    try:
+        load_courses(path)
+    except Exception:
+        return False
+    return True
+
+
 def _parse_auth_users(raw: str) -> dict[str, str]:
     """ Parses AUTH_USERS ("user1=hash1,user2=hash2", where each hash comes from generate_password_hash - see the
      --hash-password CLI flag) into a dict. Shared by --auth password and --auth basic, which differ only in how the
@@ -46,6 +58,7 @@ def _parse_auth_users(raw: str) -> dict[str, str]:
 
 CARD_STYLE = {'border': "1px solid #ddd", 'borderRadius': "8px", 'padding': "16px", 'textAlign': "center",
               'backgroundColor': "#fafafa"}
+COURSE_COLUMNS = ("Course", "Price", "End Date")  # CSV headers, for both import and export
 DEFAULT_LANG = "en"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 EMPTY_ROW = {"Course": "", "Price": "", "End Date": ""}
@@ -91,8 +104,8 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 SMTP_FROM = os.environ.get("SMTP_FROM") or SMTP_USERNAME
-# Presets bundled with the app, shared by every user (every course CSV in the repo root, i.e. not the indexation table).
-BUNDLED_PRESETS = {f.name: f for f in HERE.iterdir() if f.suffix == ".csv" and f.name != INDEX_VALUES_CSV.name}
+# Presets bundled with the app, shared by every user: every CSV in the repo root that is a valid course list.
+BUNDLED_PRESETS = {f.name: f for f in HERE.iterdir() if is_course_csv(f)}
 DEFAULT_PRESET_NAME = next(iter(BUNDLED_PRESETS), None)
 # Custom CSVs uploaded through the browser are private to the user that uploaded them: they are saved under
 #  sessions/<key>/, where <key> is the SHA256 of that user's own identity plus SESSION_SALT (see auth.session_key).

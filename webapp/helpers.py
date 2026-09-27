@@ -3,6 +3,7 @@ business logic that aren't specific to any one callback or to authentication."""
 from __future__ import annotations
 
 import csv
+import io
 from datetime import date, timedelta
 from decimal import InvalidOperation
 from pathlib import Path
@@ -54,6 +55,19 @@ def load_preset_rows(name: str, presets: dict[str, Path]) -> list[dict]:
     return rows
 
 
+def rows_to_csv(rows: list[dict]) -> str:
+    """Serialize Dash table rows back to the CSV format accepted on upload (Course, Price, End Date), skipping fully
+     blank rows. Values are exported as typed, so the file round-trips through load_courses unchanged."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(config.COURSE_COLUMNS)
+    for row in rows:
+        values = [(row.get(col) or "").strip() for col in config.COURSE_COLUMNS]
+        if any(values):
+            writer.writerow(values)
+    return buffer.getvalue()
+
+
 def presets_for_session() -> dict[str, Path]:
     """Bundled presets combined with this user's own uploaded CSVs (if they are signed in). A same-named upload shadows
      a bundled preset for that user only - the bundled file on disk is never touched."""
@@ -62,7 +76,7 @@ def presets_for_session() -> dict[str, Path]:
     if d is None:
         return presets
     for f in d.iterdir():
-        if f.suffix == ".csv":
+        if config.is_course_csv(f):
             presets[f.name] = f
     return presets
 

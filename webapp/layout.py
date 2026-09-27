@@ -72,6 +72,8 @@ def render_main_view(identity: str | None):
                         accept=".csv",
                         multiple=False,
                     ),
+                    html.Button(STRINGS[config.DEFAULT_LANG]["export_label"], id="export-btn", n_clicks=0),
+                    dcc.Download(id="csv-download"),
                     html.Button(STRINGS[config.DEFAULT_LANG]["add_row"], id="add-row-btn", n_clicks=0),
                     html.Button(STRINGS[config.DEFAULT_LANG]["move_up_label"], id="move-up-btn", n_clicks=0),
                     html.Button(STRINGS[config.DEFAULT_LANG]["move_down_label"], id="move-down-btn", n_clicks=0),

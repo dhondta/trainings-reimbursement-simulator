@@ -8,8 +8,8 @@ Two ways to use it:
 
 - **`simulator.py`** - a command-line tool that prints a full report for one or more departure dates.
 - **`dash_app.py`** - an interactive web dashboard (built with [Plotly Dash](https://dash.plotly.com/)) with charts,
-  a slider over departure dates, CSV upload, and simple email-based sign-in so several people can each keep their
-  own course lists.
+  a slider over departure dates, CSV upload/export, and simple email-based sign-in so several people can each keep
+  their own course lists.
 
 ## How the rule is modeled
 
@@ -111,7 +111,10 @@ python3 dash_app.py --local
 
 Features:
 
-- Editable, reorderable course table (add/delete/move rows, or upload/browse a CSV).
+- Editable, reorderable course table (add/delete/move rows, or upload/browse a CSV), and export of the current table
+  back to a CSV in the same format as for import.
+- Presets: every CSV in the repo root (plus the user's own uploads) that complies with the [CSV format](#csv-format)
+  is offered in the preset dropdown; any other CSV, such as `index_values.csv`, is ignored.
 - A slider over every month from next month up to the actual date the whole course list becomes fully resolved.
 - A vertical bar chart of the degressive amount owed per course (fixed y-axis, so bars visibly shrink as you move
   the slider forward), a horizontal Gantt-style chart of each rendement period's served/suspended/remaining history,

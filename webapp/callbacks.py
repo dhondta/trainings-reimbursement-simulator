@@ -9,7 +9,7 @@ from pathlib import Path
 
 import dash
 import plotly.graph_objects as go
-from dash import Input, Output, State, html, no_update
+from dash import Input, Output, State, dcc, html, no_update
 
 from simulator import REPAYMENT_MONTHS, add_months, build_period_status_timeline, build_rendement_periods, \
                       calculate_reimbursement, determine_triggering_courses, load_courses, money
@@ -17,7 +17,7 @@ from simulator import REPAYMENT_MONTHS, add_months, build_period_status_timeline
 from . import config
 from .auth import session_dir
 from .helpers import date_at, final_rendement_completion_day, info_card, load_preset_rows, presets_for_session, \
-                     rows_to_courses, slider_marks, slider_max_months, split_at_departure, status_at_date, \
+                     rows_to_courses, rows_to_csv, slider_marks, slider_max_months, split_at_departure, status_at_date, \
                      timeline_horizon, value_card
 from .instance import app
 from .strings import STRINGS
@@ -58,6 +58,14 @@ def handle_csv_upload(contents, filename, lang):
         return no_update, no_update, t["upload_error"].format(error=exc)
     presets = presets_for_session()
     return [{"label": name, "value": name} for name in presets], dest.name, ""
+
+
+@app.callback(Output("csv-download", "data"), Input("export-btn", "n_clicks"), State("courses-table", "data"),
+              State("preset-dropdown", "value"), prevent_initial_call=True)
+def export_csv(_n_clicks, rows, preset_name):
+    # Named after the loaded preset when there is one, so exporting then re-uploading an edited set reads naturally.
+    filename = Path(preset_name).name if preset_name else "courses.csv"
+    return dcc.send_string(rows_to_csv(rows or []), filename)
 
 
 @app.callback(Output("courses-table", "data", allow_duplicate=True), Output("courses-table", "selected_rows"),
@@ -295,7 +303,7 @@ def update_slider_range(rows, current_value):
 
 @app.callback(Output("language-label", "children"), Output("app-title", "children"), Output("law-summary", "children"),
               Output("load-label", "children"), Output("preset-dropdown", "placeholder"),
-              Output("browse-btn", "children"), Output("add-row-btn", "children"), Output("move-up-btn", "children"),
+              Output("browse-btn", "children"), Output("export-btn", "children"), Output("add-row-btn", "children"), Output("move-up-btn", "children"),
               Output("move-down-btn", "children"), Output("courses-table", "columns"),
               Output("departure-label", "children"), Input("lang-selector", "value"))
 def update_static_labels(lang):
@@ -307,7 +315,7 @@ def update_static_labels(lang):
     ]
     law_criteria = [html.Li(c) for c in t["law_criteria"]]
     return t["language_label"], t["app_title"], law_criteria, t["load_label"], t["preset_placeholder"], \
-           t["browse_label"], t["add_row"], t["move_up_label"], t["move_down_label"], columns, \
+           t["browse_label"], t["export_label"], t["add_row"], t["move_up_label"], t["move_down_label"], columns, \
            t["departure_label"]
 
 
