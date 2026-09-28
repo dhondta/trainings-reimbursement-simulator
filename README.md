@@ -144,6 +144,8 @@ Features:
   and cards for the total owed, the rendement period (start and end dates), and the current month's rendement rate.
 - A dynamic explanation panel that restates the four criteria above with the actual numbers for the current
   simulation.
+- A PDF report of the reimbursement plan for the selected departure date (key figures, threshold test, amount owed per
+  course, both charts and the explanation panel), in the current UI language.
 - English, French and Dutch UI (selector in the top-right).
 
 ### Sign-in and sessions

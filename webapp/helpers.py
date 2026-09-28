@@ -5,13 +5,13 @@ from __future__ import annotations
 import csv
 import io
 from datetime import date, timedelta
-from decimal import InvalidOperation
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from dash import html
 
-from simulator import Course, REPAYMENT_MONTHS, add_months, build_period_status_timeline, build_rendement_periods, \
-                      money, parse_date, parse_decimal
+from simulator import CAP_YEARS as LAW_CAP_YEARS, Course, REPAYMENT_MONTHS, add_months, build_period_status_timeline, \
+                      build_rendement_periods, index_period, indexed_min_rate, money, parse_date, parse_decimal
 
 from . import config
 from .auth import session_dir
@@ -20,6 +20,52 @@ from .strings import STRINGS
 
 def date_at(index: int) -> date:
     return add_months(config.SLIDER_START, index)
+
+
+def detail_status(detail: dict) -> str | None:
+    """ The status of a course's amount at the departure date (see calculate_reimbursement's details): "remaining" if
+     still owed, "expired" if forgiven once the clause expired (art. 179, §5), "served" if fully paid off by rendement,
+     or None if the course was not yet taken. """
+    if not detail["taken"]:
+        return None
+    if detail["months_forgiven"] > 0:
+        return "expired"
+    return "remaining" if detail["reimbursement"] > 0 else "served"
+
+
+def explanation_items(t: dict, courses, triggering_courses, details: list[dict], timeline_by_course: dict,
+                      departure_date: date, total: Decimal) -> list[str]:
+    """ How the four criteria of the law concretely apply to a simulation, with the actual numbers behind the departure
+     date, plus a note for each setting departing from the law (see the --cap-years / --min-rate CLI flags). Shared by
+     the dashboard's explanation panel and the PDF report. """
+    departure_str = departure_date.strftime("%d/%m/%y")
+    n_owing = sum(1 for d in details if d["months_remaining"] > 0)
+    n_active = sum(1 for d in details if status_at_date(timeline_by_course[d["course"]], departure_date) == "served")
+    capped_rows = [d for d in details if d["months_forgiven"] > 0]
+    if capped_rows:
+        forgiven_amount = money(sum((d["amount_forgiven"] for d in capped_rows), Decimal("0.00")))
+        cap_explanation = t["explanation_cap_some"].format(n_capped=len(capped_rows), amount=f"{forgiven_amount:.2f}",
+                                                           years=config.CAP_YEARS)
+    else:
+        cap_explanation = t["explanation_cap_none"].format(years=config.CAP_YEARS)
+    items = [
+        t["explanation_threshold"].format(n_triggering=len(triggering_courses), n_total=len(courses),
+                                          codes=", ".join(c.code for c in triggering_courses)),
+        t["explanation_rendement"].format(date=departure_str, n_owing=n_owing, total=f"{total:.2f}"),
+        t["explanation_priority"].format(date=departure_str, n_active=n_active, n_suspended=len(details) - n_active),
+        cap_explanation,
+    ]
+    if config.CAP_YEARS != LAW_CAP_YEARS:
+        items.append(t["explanation_cap_custom"].format(years=config.CAP_YEARS, law_years=LAW_CAP_YEARS))
+    if config.MIN_RENDEMENT_RATE is not None:
+        index_since, _index_until, index_value = index_period(departure_date)
+        items.append(t["explanation_min_rate"].format(
+            index=index_value, index_since=index_since.strftime("%d/%m/%y"),
+            rate=f"{config.MIN_RENDEMENT_RATE:.2f}",
+            rate_now=f"{indexed_min_rate(departure_date, config.MIN_RENDEMENT_RATE):.2f}",
+            n_shortened=sum(1 for d in details if d["required_months"] < REPAYMENT_MONTHS),
+        ))
+    return items
 
 
 def final_rendement_completion_day(periods) -> date | None:
@@ -122,7 +168,7 @@ def rows_to_courses(rows: list[dict], lang: str = config.DEFAULT_LANG) -> tuple[
         try:
             price = parse_decimal(price_raw)
             if price < 0:
-                raise ValueError("le prix ne peut pas être négatif")
+                raise ValueError(t["err_negative_price"])
         except (InvalidOperation, ValueError) as exc:
             errors.append(t["err_invalid_price"].format(i=i, code=code, exc=exc))
             continue

@@ -11,17 +11,17 @@ import dash
 import plotly.graph_objects as go
 from dash import Input, Output, State, dcc, html, no_update
 
-from simulator import CAP_YEARS as LAW_CAP_YEARS, REPAYMENT_MONTHS, active_rendement, build_period_status_timeline, \
-                      calculate_reimbursement, determine_triggering_courses, index_period, indexed_min_rate, \
-                      load_courses, money
+from simulator import active_rendement, build_period_status_timeline, calculate_reimbursement, \
+                      determine_triggering_courses, load_courses, money
 
 from . import config
 from .auth import session_dir
-from .helpers import date_at, final_rendement_completion_day, icon_label, info_card, load_preset_rows, \
-                     normalize_rows, presets_for_session, rendement_periods, rows_to_courses, rows_to_csv, \
-                     slider_marks, slider_max_months, slider_min_months, sort_rows_by_date, split_at_departure, \
-                     status_at_date, timeline_horizon, value_card
+from .helpers import date_at, detail_status, explanation_items, final_rendement_completion_day, icon_label, \
+                     info_card, load_preset_rows, normalize_rows, presets_for_session, rendement_periods, \
+                     rows_to_courses, rows_to_csv, slider_marks, slider_max_months, slider_min_months, \
+                     sort_rows_by_date, split_at_departure, timeline_horizon, value_card
 from .instance import app
+from .report import build_report
 from .strings import STRINGS
 
 
@@ -68,6 +68,16 @@ def export_csv(_n_clicks, rows, preset_name):
     # Named after the loaded preset when there is one, so exporting then re-uploading an edited set reads naturally.
     filename = Path(preset_name).name if preset_name else "courses.csv"
     return dcc.send_string(rows_to_csv(rows or []), filename)
+
+
+@app.callback(Output("pdf-download", "data"), Input("export-pdf-btn", "n_clicks"), State("courses-table", "data"),
+              State("departure-slider", "value"), State("lang-selector", "value"), State("preset-dropdown", "value"),
+              prevent_initial_call=True)
+def export_pdf(_n_clicks, rows, slider_value, lang, preset_name):
+    # The report covers the simulation as currently displayed: same courses, departure date and language.
+    stem = Path(preset_name).stem if preset_name else "courses"
+    pdf = build_report(rows or [], date_at(slider_value), lang, source=preset_name)
+    return dcc.send_bytes(pdf, f"{stem}-report.pdf")
 
 
 @app.callback(Output("courses-table", "data", allow_duplicate=True), Input("courses-table", "data_timestamp"),
@@ -132,14 +142,8 @@ def update_charts(rows, slider_value, lang):
     #  that forgiven amount, since the course itself no longer owes anything), and green for a zero amount because the
     #  period was fully served (only its label shows, in green). A course not yet taken at the departure date is left
     #  blank, with a muted label.
-    def bar_status(d):
-        if not d["taken"]:
-            return None
-        if d["months_forgiven"] > 0:
-            return "expired"
-        return "remaining" if d["reimbursement"] > 0 else "served"
     codes = [d["course"] for d in details]
-    statuses = [bar_status(d) for d in details]
+    statuses = [detail_status(d) for d in details]
     amounts = [float(money(d["amount_forgiven"]) if status == "expired" else d["reimbursement"])
                for d, status in zip(details, statuses)]
     colors = [config.STATUS_COLORS[status] if status else config.THEME_COLORS["secondary"] for status in statuses]
@@ -270,44 +274,10 @@ def update_charts(rows, slider_value, lang):
     # --------------------------------------------------------
     # Dynamic explanation: how the four criteria listed under the title concretely apply to this simulation, with
     #  the actual numbers behind this departure date.
-    n_owing = sum(1 for d in details if d["months_remaining"] > 0)
-    n_active = sum(1 for d in details if status_at_date(timeline_by_course[d["course"]], departure_date) == "served")
-    capped_rows = [d for d in details if d["months_forgiven"] > 0]
-    if capped_rows:
-        forgiven_amount = money(sum((d["amount_forgiven"] for d in capped_rows), Decimal("0.00")))
-        cap_explanation = t["explanation_cap_some"].format(n_capped=len(capped_rows), amount=f"{forgiven_amount:.2f}",
-                                                           years=config.CAP_YEARS)
-    else:
-        cap_explanation = t["explanation_cap_none"].format(years=config.CAP_YEARS)
-    # Settings that depart from the law (see the --cap-years / --min-rate CLI flags) are called out explicitly.
-    beyond_law = []
-    if config.CAP_YEARS != LAW_CAP_YEARS:
-        beyond_law.append(t["explanation_cap_custom"].format(years=config.CAP_YEARS, law_years=LAW_CAP_YEARS))
-    if config.MIN_RENDEMENT_RATE is not None:
-        index_since, _index_until, index_value = index_period(departure_date)
-        beyond_law.append(t["explanation_min_rate"].format(
-            index=index_value, index_since=index_since.strftime("%d/%m/%y"),
-            rate=f"{config.MIN_RENDEMENT_RATE:.2f}",
-            rate_now=f"{indexed_min_rate(departure_date, config.MIN_RENDEMENT_RATE):.2f}",
-            n_shortened=sum(1 for d in details if d["required_months"] < REPAYMENT_MONTHS),
-        ))
+    explanation = explanation_items(t, courses, triggering_courses, details, timeline_by_course, departure_date, total)
     law_application = html.Div([
         html.Div(t["explanation_title"], className="fw-bold mb-2"),
-        html.Ol(
-            [
-                html.Li(t["explanation_threshold"].format(
-                    n_triggering=len(triggering_courses), n_total=len(courses),
-                    codes=", ".join(c.code for c in triggering_courses),
-                )),
-                html.Li(t["explanation_rendement"].format(date=departure_str, n_owing=n_owing, total=f"{total:.2f}")),
-                html.Li(t["explanation_priority"].format(
-                    date=departure_str, n_active=n_active, n_suspended=len(details) - n_active,
-                )),
-                html.Li(cap_explanation),
-                *(html.Li(note) for note in beyond_law),
-            ],
-            className="small text-muted mb-0",
-        ),
+        html.Ol([html.Li(item) for item in explanation], className="small text-muted mb-0"),
     ])
     return error_text, period_card, total_card, bar_fig, timeline_fig, rate_card, law_application
 
@@ -326,7 +296,8 @@ def update_slider_range(rows, current_value):
 
 @app.callback(Output("language-label", "children"), Output("app-title", "children"), Output("law-summary", "children"),
               Output("load-label", "children"), Output("preset-dropdown", "placeholder"),
-              Output("browse-btn", "children"), Output("export-btn", "children"), Output("add-row-btn", "children"),
+              Output("browse-btn", "children"), Output("export-btn", "children"),
+              Output("export-pdf-btn", "children"), Output("add-row-btn", "children"),
               Output("courses-table", "columns"), Output("departure-label", "children"),
               Input("lang-selector", "value"))
 def update_static_labels(lang):
@@ -339,7 +310,8 @@ def update_static_labels(lang):
     law_criteria = [html.Li(c) for c in t["law_criteria"]]
     return t["language_label"], t["app_title"], law_criteria, t["load_label"], t["preset_placeholder"], \
            icon_label("upload", t["browse_label"]), icon_label("download", t["export_label"]), \
-           icon_label("plus-lg", t["add_row"]), columns, t["departure_label"]
+           icon_label("file-earmark-pdf", t["export_pdf_label"]), icon_label("plus-lg", t["add_row"]), columns, \
+           t["departure_label"]
 
 
 @app.callback(Output("courses-table", "data"), Input("preset-dropdown", "value"), Input("add-row-btn", "n_clicks"),
