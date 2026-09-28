@@ -93,6 +93,15 @@ GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI")
 MIN_RENDEMENT_RATE = parse_decimal(os.environ["MIN_RENDEMENT_RATE"]) if os.environ.get("MIN_RENDEMENT_RATE") else None
 if MIN_RENDEMENT_RATE is not None and MIN_RENDEMENT_RATE <= 0:
     raise ValueError("MIN_RENDEMENT_RATE must be strictly positive")
+# Security limits: the most course rows a table may hold (enforced server-side on uploads, presets, added/pasted rows
+#  and every computation), and the largest CSV file accepted by the "Import CSV" upload, in bytes.
+MAX_COURSES = 50
+MAX_UPLOAD_BYTES = 2 * 1024
+# The most CSVs a user may keep uploaded (bundled presets don't count), and the minimum delay between two PDF exports by
+#  the same user - tracked in memory per process (see wsgi.py on why a single worker is required), keyed by session key.
+MAX_UPLOADS = 10
+PDF_EXPORT_COOLDOWN = timedelta(minutes=1)
+LAST_PDF_EXPORTS: dict[str, datetime] = {}  # session key -> time of that user's last PDF export
 MS_PER_DAY = 24 * 60 * 60 * 1000
 OAUTH_STATE_TTL = timedelta(minutes=10)
 OTP_LENGTH = 8

@@ -101,6 +101,8 @@ def load_preset_rows(name: str, presets: dict[str, Path]) -> list[dict]:
     path, rows = presets[name], []
     with path.open("r", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
+            if len(rows) >= config.MAX_COURSES:
+                break
             rows.append({'Course': row["Course"].strip(), 'Price': row["Price"].strip(),
                          'End Date': row["End Date"].strip()})
     return sort_rows_by_date(normalize_rows(rows))
@@ -112,7 +114,7 @@ def rows_to_csv(rows: list[dict]) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(config.COURSE_COLUMNS)
-    for row in rows:
+    for row in rows[:config.MAX_COURSES]:
         values = [(row.get(col) or "").strip() for col in config.COURSE_COLUMNS]
         if any(values):
             writer.writerow(values)
@@ -154,8 +156,12 @@ def rendement_periods(triggering_courses: list[Course]) -> list:
 
 
 def rows_to_courses(rows: list[dict], lang: str = config.DEFAULT_LANG) -> tuple[list[Course], list[str]]:
-    """Parse Dash table rows into Course objects, collecting per-row errors."""
+    """Parse Dash table rows into Course objects, collecting per-row errors. Only the first MAX_COURSES rows are
+     considered, whatever the client sent (the table data can be forged), with an error reporting the truncation."""
     t, courses, errors = STRINGS[lang], [], []
+    if len(rows) > config.MAX_COURSES:
+        errors.append(t["too_many_courses"].format(max=config.MAX_COURSES))
+        rows = rows[:config.MAX_COURSES]
     for i, row in enumerate(rows, start=1):
         code = (row.get("Course") or "").strip()
         price_raw = (row.get("Price") or "").strip()

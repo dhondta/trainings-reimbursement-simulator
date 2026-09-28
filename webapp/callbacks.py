@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import binascii
+import threading
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,7 +17,7 @@ from simulator import active_rendement, build_period_status_timeline, calculate_
                       determine_triggering_courses, load_courses, money
 
 from . import config
-from .auth import session_dir
+from .auth import session_dir, session_key
 from .helpers import date_at, detail_status, explanation_items, final_rendement_completion_day, icon_label, \
                      info_card, load_preset_rows, normalize_rows, presets_for_session, rendement_periods, \
                      rows_to_courses, rows_to_csv, slider_marks, slider_max_months, slider_min_months, \
@@ -23,6 +25,8 @@ from .helpers import date_at, detail_status, explanation_items, final_rendement_
 from .instance import app
 from .report import build_report
 from .strings import STRINGS
+
+_pdf_export_lock = threading.Lock()  # makes the PDF rate limit's check-and-set atomic across the server's threads
 
 
 @app.callback(Output("preset-dropdown", "options"), Output("preset-dropdown", "value"),
@@ -32,11 +36,17 @@ def handle_csv_upload(contents, filename, lang):
     t = STRINGS[lang]
     if contents is None:
         return no_update, no_update, no_update
+    too_large = t["upload_error"].format(error=t["upload_too_large"].format(max_kb=config.MAX_UPLOAD_BYTES // 1024))
     try:
         _header, encoded = contents.split(",", 1)
+        # Checked on the base64 payload first (4 chars per 3 bytes), so an oversized file isn't even decoded.
+        if len(encoded) > (config.MAX_UPLOAD_BYTES + 2) // 3 * 4:
+            return no_update, no_update, too_large
         raw_bytes = base64.b64decode(encoded)
     except (ValueError, binascii.Error) as exc:
         return no_update, no_update, t["upload_error"].format(error=exc)
+    if len(raw_bytes) > config.MAX_UPLOAD_BYTES:
+        return no_update, no_update, too_large
     # Sanitize filename (strip any directory components), save into this user's own session folder, and never overwrite
     #  one of their existing uploads (number the file instead) - a name that only collides with a bundled preset is
     #  fine, it will simply shadow it for this user.
@@ -47,6 +57,11 @@ def handle_csv_upload(contents, filename, lang):
     user_dir = session_dir()
     if user_dir is None:
         return no_update, no_update, t["auth_required"]
+    # Bundled presets live in the same folder as uploads in LOCAL_MODE (see auth.session_dir): they don't count.
+    bundled = set(config.BUNDLED_PRESETS.values())
+    if sum(1 for f in user_dir.glob("*.csv") if f not in bundled) >= config.MAX_UPLOADS:
+        return no_update, no_update, t["upload_error"].format(
+            error=t["upload_limit_reached"].format(max=config.MAX_UPLOADS))
     dest = user_dir / safe_name
     n = 1
     while dest.exists():
@@ -54,7 +69,8 @@ def handle_csv_upload(contents, filename, lang):
         n += 1
     dest.write_bytes(raw_bytes)
     try:
-        load_courses(dest)
+        if len(load_courses(dest)) > config.MAX_COURSES:
+            raise ValueError(t["upload_too_many"].format(max=config.MAX_COURSES))
     except Exception as exc:
         dest.unlink(missing_ok=True)
         return no_update, no_update, t["upload_error"].format(error=exc)
@@ -70,14 +86,22 @@ def export_csv(_n_clicks, rows, preset_name):
     return dcc.send_string(rows_to_csv(rows or []), filename)
 
 
-@app.callback(Output("pdf-download", "data"), Input("export-pdf-btn", "n_clicks"), State("courses-table", "data"),
-              State("departure-slider", "value"), State("lang-selector", "value"), State("preset-dropdown", "value"),
-              prevent_initial_call=True)
+@app.callback(Output("pdf-download", "data"), Output("export-error", "children"), Input("export-pdf-btn", "n_clicks"),
+              State("courses-table", "data"), State("departure-slider", "value"), State("lang-selector", "value"),
+              State("preset-dropdown", "value"), prevent_initial_call=True)
 def export_pdf(_n_clicks, rows, slider_value, lang, preset_name):
+    # Rate limited per user (anonymous visitors, e.g. in LOCAL_MODE, share a single slot), as generating a report is
+    #  the most expensive thing the app does.
+    key, now = session_key() or "anonymous", datetime.now()
+    with _pdf_export_lock:
+        last = config.LAST_PDF_EXPORTS.get(key)
+        if last is not None and (remaining := last + config.PDF_EXPORT_COOLDOWN - now).total_seconds() > 0:
+            return no_update, STRINGS[lang]["pdf_rate_limited"].format(seconds=int(remaining.total_seconds()) + 1)
+        config.LAST_PDF_EXPORTS[key] = now
     # The report covers the simulation as currently displayed: same courses, departure date and language.
     stem = Path(preset_name).stem if preset_name else "courses"
     pdf = build_report(rows or [], date_at(slider_value), lang, source=preset_name)
-    return dcc.send_bytes(pdf, f"{stem}-report.pdf")
+    return dcc.send_bytes(pdf, f"{stem}-report.pdf"), ""
 
 
 @app.callback(Output("courses-table", "data", allow_duplicate=True), Input("courses-table", "data_timestamp"),
@@ -86,7 +110,8 @@ def tidy_table(_data_timestamp, rows):
     """ After each user edit: reformats prices and dates to the table's canonical format, and re-sorts rows by date.
      data_timestamp only changes on user edits (not when a callback sets the data), so updating it here doesn't loop. """
     rows = rows or []
-    tidy_rows = sort_rows_by_date(normalize_rows(rows))
+    # Pasting into the table can append rows: drop those beyond the limit.
+    tidy_rows = sort_rows_by_date(normalize_rows(rows[:config.MAX_COURSES]))
     return no_update if tidy_rows == rows else tidy_rows
 
 
@@ -321,6 +346,12 @@ def update_table(preset_name, n_clicks, current_rows):
     if trigger == "preset-dropdown" and preset_name:
         return load_preset_rows(preset_name, presets_for_session())
     if trigger == "add-row-btn":
-        return (current_rows or []) + [dict(config.EMPTY_ROW)]
+        current_rows = current_rows or []
+        return current_rows + [dict(config.EMPTY_ROW)] if len(current_rows) < config.MAX_COURSES else no_update
     return current_rows
+
+
+@app.callback(Output("add-row-btn", "disabled"), Input("courses-table", "data"))
+def limit_add_row(rows):
+    return len(rows or []) >= config.MAX_COURSES
 

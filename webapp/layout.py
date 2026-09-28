@@ -88,6 +88,7 @@ def render_main_view(identity: str | None):
                 ],
             ),
             html.Div(id="upload-error", className="text-danger small mb-2"),
+            html.Div(id="export-error", className="text-danger small mb-2"),
             dash_table.DataTable(
                 id="courses-table",
                 columns=[
