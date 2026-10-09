@@ -272,7 +272,7 @@ def build_report(rows: list[dict], departure_date: date, lang: str, source: str 
     course_rows = []
     for course in courses:
         row = audit_by_course.get(id(course))
-        course_rows.append([course.code, fmt(course.end_date), f"{course.price:.2f}",
+        course_rows.append([course.label, fmt(course.end_date), f"{course.price:.2f}",
                             f"{row['cumulative_cost']:.2f}" if row else "-", f"{row['threshold']:.2f}" if row else "-",
                             (t["yes"] if row["exceeds"] else t["no"]) if row else "-"])
     story += [

@@ -37,7 +37,7 @@ def _persisted_secret(env_var: str, filename: str) -> str:
 
 def is_course_csv(path: Path) -> bool:
     """ Whether a file is a valid course list, i.e. a CSV that the upload itself would accept (Course, Price, End Date
-     columns with parseable values) - which de facto excludes other data CSVs such as the indexation table."""
+     columns with parseable values, and an optional Bundle column) - which de facto excludes other data CSVs such as the indexation table."""
     if path.suffix != ".csv":
         return False
     try:
@@ -63,10 +63,10 @@ def _parse_auth_users(raw: str) -> dict[str, str]:
 CAP_YEARS = int(os.environ.get("CAP_YEARS") or LAW_CAP_YEARS)
 if CAP_YEARS <= 0:
     raise ValueError("CAP_YEARS must be strictly positive")
-COURSE_COLUMNS = ("Course", "Price", "End Date")  # CSV headers, for both import and export
+COURSE_COLUMNS = ("Course", "Price", "End Date", "Bundle")  # CSV headers, for both import and export (Bundle optional)
 DEFAULT_LANG = "en"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-EMPTY_ROW = {"Course": "", "Price": "", "End Date": ""}
+EMPTY_ROW = {"Course": "", "Price": "", "End Date": "", "Bundle": ""}
 FALLBACK_SLIDER_MONTHS = 60  # used when there is no valid period to size the range on
 LANGUAGE_OPTIONS = [{"label": "EN", "value": "en"}, {"label": "FR", "value": "fr"}, {"label": "NL", "value": "nl"}]
 # When True (set via the --local CLI flag), the sign-in/OTP flow is skipped entirely and every visitor shares a single

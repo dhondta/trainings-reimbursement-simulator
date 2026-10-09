@@ -20,6 +20,7 @@ STRINGS = {
         "col_course": "Formation",
         "col_price": "Prix (€)",
         "col_end_date": "Date de fin (jj/mm/aaaa)",
+        "col_bundle": "Groupe (facultatif)",
         "law_criteria": [
             "Une clause de formation est déclenchée dès que le coût cumulé des formations suivies sur une "
             "fenêtre glissante de 24 mois dépasse un seuil indexé (base de 5 000 €, indexée depuis 2013).",
@@ -103,6 +104,7 @@ STRINGS = {
         "err_invalid_price": "Ligne {i} ({code}) : prix invalide ({exc}).",
         "err_negative_price": "le prix ne peut pas être négatif",
         "err_invalid_date": "Ligne {i} ({code}) : date invalide ({exc}).",
+        "err_bundle_name": "Groupe(s) portant le nom d'une formation hors du groupe, ignoré(s) : {names}.",
         "report_title": "Plan de remboursement des formations",
         "report_subtitle": "Départ envisagé le {date} - rapport généré le {today}",
         "report_source": "Jeu de formations : {name}",
@@ -147,6 +149,7 @@ STRINGS = {
         "col_course": "Opleiding",
         "col_price": "Prijs (€)",
         "col_end_date": "Einddatum (dd/mm/jjjj)",
+        "col_bundle": "Bundel (optioneel)",
         "law_criteria": [
             "Een opleidingsbeding wordt geactiveerd zodra de cumulatieve kost van opleidingen binnen een "
             "glijdend venster van 24 maanden een geïndexeerde drempel overschrijdt (basis van € 5.000, "
@@ -230,6 +233,7 @@ STRINGS = {
         "err_invalid_price": "Rij {i} ({code}): ongeldige prijs ({exc}).",
         "err_negative_price": "de prijs mag niet negatief zijn",
         "err_invalid_date": "Rij {i} ({code}): ongeldige datum ({exc}).",
+        "err_bundle_name": "Bundel(s) met de naam van een opleiding buiten de bundel, genegeerd: {names}.",
         "report_title": "Terugbetalingsplan van opleidingen",
         "report_subtitle": "Beoogd vertrek op {date} - rapport gegenereerd op {today}",
         "report_source": "Reeks opleidingen: {name}",
@@ -274,6 +278,7 @@ STRINGS = {
         "col_course": "Course",
         "col_price": "Price (€)",
         "col_end_date": "End date (dd/mm/yyyy)",
+        "col_bundle": "Bundle (optional)",
         "law_criteria": [
             "A training clause is triggered whenever the cumulative cost of trainings completed within a "
             "rolling 24-month window exceeds an indexed threshold (€5,000 base, indexed since 2013).",
@@ -355,6 +360,7 @@ STRINGS = {
         "err_invalid_price": "Row {i} ({code}): invalid price ({exc}).",
         "err_negative_price": "the price cannot be negative",
         "err_invalid_date": "Row {i} ({code}): invalid date ({exc}).",
+        "err_bundle_name": "Bundle(s) named like a course outside of them, ignored: {names}.",
         "report_title": "Training reimbursement plan",
         "report_subtitle": "Planned departure on {date} - report generated on {today}",
         "report_source": "Course set: {name}",

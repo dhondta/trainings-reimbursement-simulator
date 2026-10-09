@@ -10,8 +10,8 @@ from pathlib import Path
 
 from dash import html
 
-from simulator import CAP_YEARS as LAW_CAP_YEARS, Course, REPAYMENT_MONTHS, add_months, build_period_status_timeline, \
-                      build_rendement_periods, index_period, indexed_max_rate, indexed_min_rate, \
+from simulator import BUNDLE_COLUMN, CAP_YEARS as LAW_CAP_YEARS, Course, REPAYMENT_MONTHS, add_months, build_period_status_timeline, \
+                      build_rendement_periods, bundle_courses, index_period, indexed_max_rate, indexed_min_rate, \
                       indexed_postpone_remainder, money, parse_date, parse_decimal
 
 from . import config
@@ -119,12 +119,12 @@ def load_preset_rows(name: str, presets: dict[str, Path]) -> list[dict]:
             if len(rows) >= config.MAX_COURSES:
                 break
             rows.append({'Course': row["Course"].strip(), 'Price': row["Price"].strip(),
-                         'End Date': row["End Date"].strip()})
+                         'End Date': row["End Date"].strip(), 'Bundle': (row.get(BUNDLE_COLUMN) or "").strip()})
     return sort_rows_by_date(normalize_rows(rows))
 
 
 def rows_to_csv(rows: list[dict]) -> str:
-    """Serialize Dash table rows back to the CSV format accepted on upload (Course, Price, End Date), skipping fully
+    """Serialize Dash table rows back to the CSV format accepted on upload (Course, Price, End Date, Bundle), skipping fully
      blank rows. Values are exported as typed, so the file round-trips through load_courses unchanged."""
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
@@ -173,8 +173,10 @@ def rendement_periods(triggering_courses: list[Course]) -> list:
 
 
 def rows_to_courses(rows: list[dict], lang: str = config.DEFAULT_LANG) -> tuple[list[Course], list[str]]:
-    """Parse Dash table rows into Course objects, collecting per-row errors. Only the first MAX_COURSES rows are
-     considered, whatever the client sent (the table data can be forged), with an error reporting the truncation."""
+    """Parse Dash table rows into Course objects, collecting per-row errors, then merge the bundled ones (see
+     simulator.bundle_courses). Only the first MAX_COURSES rows are considered, whatever the client sent (the table data
+     can be forged), with an error reporting the truncation. A bundle named like a course outside of it is reported,
+     and its rows are left out."""
     t, courses, errors = STRINGS[lang], [], []
     if len(rows) > config.MAX_COURSES:
         errors.append(t["too_many_courses"].format(max=config.MAX_COURSES))
@@ -183,7 +185,8 @@ def rows_to_courses(rows: list[dict], lang: str = config.DEFAULT_LANG) -> tuple[
         code = (row.get("Course") or "").strip()
         price_raw = (row.get("Price") or "").strip()
         date_raw = (row.get("End Date") or "").strip()
-        if not code and not price_raw and not date_raw:
+        bundle = (row.get("Bundle") or "").strip()
+        if not code and not price_raw and not date_raw and not bundle:
             continue
         if not code:
             errors.append(t["err_missing_code"].format(i=i))
@@ -200,8 +203,12 @@ def rows_to_courses(rows: list[dict], lang: str = config.DEFAULT_LANG) -> tuple[
         except ValueError as exc:
             errors.append(t["err_invalid_date"].format(i=i, code=code, exc=exc))
             continue
-        courses.append(Course(code=code, price=price, end_date=end_date))
-    return sorted(courses, key=lambda c: c.end_date), errors
+        courses.append(Course(code=code, price=price, end_date=end_date, bundle=bundle))
+    unbundled_codes = {c.code for c in courses if not c.bundle}
+    if clashes := sorted({c.bundle for c in courses if c.bundle in unbundled_codes}):
+        errors.append(t["err_bundle_name"].format(names=", ".join(clashes)))
+        courses = [c for c in courses if c.bundle not in clashes]
+    return bundle_courses(courses), errors
 
 
 def slider_marks(min_months: int, max_months: int) -> dict:

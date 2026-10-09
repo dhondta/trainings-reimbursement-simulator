@@ -331,6 +331,7 @@ def update_static_labels(lang):
         {"name": t["col_course"], "id": "Course", "type": "text"},
         {"name": t["col_price"], "id": "Price", "type": "text"},
         {"name": t["col_end_date"], "id": "End Date", "type": "text"},
+        {"name": t["col_bundle"], "id": "Bundle", "type": "text"},
     ]
     law_criteria = [html.Li(c) for c in t["law_criteria"]]
     return t["language_label"], t["app_title"], law_criteria, t["load_label"], t["preset_placeholder"], \

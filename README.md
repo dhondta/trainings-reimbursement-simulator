@@ -16,6 +16,9 @@ Two ways to use it:
 - **Threshold**: a training triggers the obligation only if the cumulative cost of trainings completed within the
   trailing 24 months exceeds an indexed threshold (base €5,000, indexed since 2013 - see
   [`index_values.csv`](#indexation-table)).
+- **Bundles** *(optional)*: courses sharing a same `Bundle` value in the [CSV](#csv-format) count as a single course,
+  named after the bundle: its price is the sum of theirs and its end date the latest of theirs. It goes through the
+  threshold test as one course and, if it triggers, gets a single rendement period starting after its last course.
 - **Rendement period**: once triggered, the employee owes 24 months of service ("rendement") after that training.
   Leaving before it's complete means reimbursing `price × months still owed / 24`.
 - **Priority / suspension**: when several trainings' rendement periods overlap, only the most recently triggered one
@@ -72,9 +75,21 @@ A,4321.85,10/08/2013
 B,5123.40,26/11/2014
 ```
 
+An optional `Bundle` column groups courses into a single rendement period (see
+[How the rule is modeled](#how-the-rule-is-modeled)):
+
+```csv
+Course,Price,End Date,Bundle
+A,4321.85,10/08/2013,
+B,5123.40,26/11/2014,GIAC
+C,4980.00,15/02/2015,GIAC
+```
+
 - `Course`: any identifier (course code, name, …).
 - `Price`: accepts `.` or `,` as decimal separator, thousand separators, and an optional `€` sign.
 - `End Date`: `DD/MM/YYYY`, `DD/MM/YY`, `DD-MM-YYYY`, or `YYYY-MM-DD`.
+- `Bundle` *(optional)*: any name, shared by the courses to group, and left empty for the others. It may not be named
+  like a course outside of it.
 
 ### Indexation table
 

@@ -41,6 +41,9 @@ CAP_MONTHS = CAP_YEARS * 12
 INDEX_VALUES_CSV = Path(__file__).parent / "index_values.csv"
 REQUIRED_INDEX_COLUMNS = {"Start Date", "Index Value"}
 REQUIRED_COLUMNS = {"Course", "Price", "End Date"}
+# Optional column grouping courses into bundles: the courses sharing a same non-empty value count as a single course
+#  (see bundle_courses), with a single rendement period.
+BUNDLE_COLUMN = "Bundle"
 
 
 # ==================================================== DATA MODELS =====================================================
@@ -49,6 +52,13 @@ class Course:
     code: str
     price: Decimal
     end_date: date
+    bundle: str = ""                         # Name of the bundle this course belongs to, if any (see bundle_courses).
+    members: tuple[str, ...] = ()            # For a bundle, the codes of the courses it groups.
+    
+    @property
+    def label(self) -> str:
+        """ The course code, followed for a bundle by the codes of the courses it groups. """
+        return f"{self.code} ({' + '.join(self.members)})" if self.members else self.code
 
 
 @dataclass
@@ -423,6 +433,26 @@ def calculate_reimbursement(periods: list[Rendement], departure_date: date) -> t
     return money(total), details
 
 
+def bundle_courses(courses: list[Course]) -> list[Course]:
+    """ Merges the courses sharing a same bundle into a single course, named after the bundle: its price is the sum of
+     theirs and its end date the latest of theirs, so that it is tested against the threshold as one course and, if it
+     triggers, gets a single rendement period starting after its last course. Courses without a bundle are kept as is.
+     Raises ValueError if a bundle is named like a course outside of it (both would then be indistinguishable). """
+    groups: dict[str, list[Course]] = {}
+    result = []
+    for course in courses:
+        if course.bundle:
+            groups.setdefault(course.bundle, []).append(course)
+        else:
+            result.append(course)
+    if clashes := sorted(set(groups) & {c.code for c in result}):
+        raise ValueError(f"bundle(s) named like a course outside of them: {', '.join(clashes)}")
+    for name, members in groups.items():
+        result.append(Course(code=name, price=sum((c.price for c in members), Decimal("0.00")),
+                             end_date=max(c.end_date for c in members), members=tuple(c.code for c in members)))
+    return sorted(result, key=lambda c: c.end_date)
+
+
 def determine_triggering_courses(courses: list[Course]) -> tuple[list[Course], list[dict]]:
     audit, triggering = [], []
     for course in courses:
@@ -447,6 +477,8 @@ def determine_triggering_courses(courses: list[Course]) -> tuple[list[Course], l
 
 
 def load_courses(csv_path: Path) -> list[Course]:
+    """ The courses of a CSV file, as listed (with their bundle, if any, from the optional BUNDLE_COLUMN): pass them
+     through bundle_courses before simulating. """
     if not csv_path.exists():
         raise FileNotFoundError(f"file not found: {csv_path}")
     courses = []
@@ -462,11 +494,13 @@ def load_courses(csv_path: Path) -> list[Course]:
                     raise ValueError("empty course")
                 if (price := parse_decimal(row["Price"])) < 0:
                     raise ValueError("price cannot be negative")
-                courses.append(Course(code=code, price=price, end_date=parse_date(row["End Date"])))
+                courses.append(Course(code=code, price=price, end_date=parse_date(row["End Date"]),
+                                      bundle=(row.get(BUNDLE_COLUMN) or "").strip()))
             except Exception as exc:
                 raise ValueError(f"error at line {line_number}: {exc}") from exc
     if not courses:
         raise ValueError("input CSV file has no data")
+    bundle_courses(courses)  # Validates the bundles.
     return sorted(courses, key=lambda c: c.end_date)
 
 
@@ -505,7 +539,7 @@ def print_triggering_courses(audit: list[dict]) -> None:
     for row in audit:
         course = row["course"]
         status = "TRIGGERS" if row["exceeds"] else "DOES NOT TRIGGER"
-        print(f"{course.code:8} {course.end_date.strftime('%d/%m/%Y')}  cumul = {row['cumulative_cost']:>10.2f} €  "
+        print(f"{course.label:8} {course.end_date.strftime('%d/%m/%Y')}  cumul = {row['cumulative_cost']:>10.2f} €  "
             f"threshold = {row['threshold']:>10.2f} €  {status}")
 
 
@@ -575,7 +609,8 @@ def simulate(courses: list[Course], departure_date: date, verbose: bool = True, 
 # ======================================================== MAIN ========================================================
 def main() -> int:
     parser = ArgumentParser(description=("Trainings reimbursement simulator"))
-    parser.add_argument("csv", type=Path, help="CSV with headers: Course, Price, End Date")
+    parser.add_argument("csv", type=Path, help="CSV with headers: Course, Price, End Date (and optionally Bundle, to "
+                                               "group courses sharing a same value into a single rendement period)")
     parser.add_argument("--departure", type=parse_date, action="append", help="start date DD/MM/YY ; can be repeated")
     parser.add_argument("--timeline", action="store_true", help="include reimbursement timeline")
     parser.add_argument("--cap-years", type=int, default=CAP_YEARS, help="maximum validity of a reimbursement period ; "
@@ -603,7 +638,8 @@ def main() -> int:
     if args.postpone_remainder is not None and args.postpone_remainder <= 0:
         parser.error("--postpone-remainder must be strictly positive")
     try:
-        courses = load_courses(args.csv)
+        listed_courses = load_courses(args.csv)
+        courses = bundle_courses(listed_courses)
     except Exception as exc:
         print(f"ERROR : {exc}", file=sys.stderr)
         return 1
@@ -611,7 +647,9 @@ def main() -> int:
     print("\nSIMULATOR OF REIMBURSEMENT - ARTICLE 179")
     print("=" * 120)
     print(f"File: {args.csv}")
-    print(f"Number of trainings: {len(courses)}")
+    print(f"Number of trainings: {len(listed_courses)}")
+    for bundle in (c for c in courses if c.members):
+        print(f"Bundle: {bundle.label} - {bundle.price:.2f}€, ending {bundle.end_date.strftime('%d/%m/%Y')}")
     if args.min_rate is not None:
         print(f"Minimum rendement rate: {args.min_rate:.2f}€/month base, indexed with the coefficient of each month "
               f"served (today: {indexed_min_rate(date.today(), args.min_rate):.2f}€/month) - not as of the law: "

@@ -95,6 +95,7 @@ def render_main_view(identity: str | None):
                     {"name": t["col_course"], "id": "Course", "type": "text"},
                     {"name": t["col_price"], "id": "Price", "type": "text"},
                     {"name": t["col_end_date"], "id": "End Date", "type": "text"},
+                    {"name": t["col_bundle"], "id": "Bundle", "type": "text"},
                 ],
                 data=default_rows,
                 editable=True,
