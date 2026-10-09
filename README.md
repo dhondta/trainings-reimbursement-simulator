@@ -29,6 +29,14 @@ Two ways to use it:
   period ends when it is fully paid off (its last month settling the remainder) - so a cheap triggering course no
   longer ties the employee down for two full years at a low monthly rate, and the rate rises with the index during a
   period.
+- **Maximum rendement rate** *(optional, not part of the law)*: off by default. The counterpart of the minimum rate:
+  when a maximum rate `M` €/month is set, each month served pays off at most `M × index`, i.e.
+  `min(max(price / 24, R × index), M × index)` - so an expensive triggering course takes longer than two years to pay
+  off. `M` must be strictly greater than `R` when both are set.
+- **Postponed remainder** *(optional, not part of the law)*: off by default. When a remainder `P` € is set and the last
+  month of a period would only pay off less than `P × index` (a base amount indexed like `R` and `M`), that remainder
+  is merged into the previous month served (which then pays off its rate plus the remainder, possibly above
+  `M × index`), so the period ends one month earlier - even when a more recent period was served in between.
 
 None of this is legal advice; the indexation table and the 15-year cap are configurable (see below) and should be
 checked against the applicable text before relying on this for anything official.
@@ -107,6 +115,12 @@ python3 simulator.py my-formations.csv --cap-years 10
 
 # Enforce a minimum rendement rate of 250 €/month base, indexed (not part of the law: shortens cheaper courses' periods)
 python3 simulator.py my-formations.csv --min-rate 250
+
+# Cap the rendement rate at 500 €/month base, indexed (not part of the law: lengthens pricier courses' periods)
+python3 simulator.py my-formations.csv --min-rate 250 --max-rate 500
+
+# Merge a period's last month into the previous one when it would pay off less than 100 € base, indexed
+python3 simulator.py my-formations.csv --min-rate 250 --postpone-remainder 100
 ```
 
 ## Web dashboard
@@ -121,8 +135,8 @@ Then open <http://127.0.0.1:8050>. Run it with `--local` to skip sign-in entirel
 python3 dash_app.py --local
 ```
 
-The same `--cap-years` and `--min-rate` options as the command-line tool are available, so their effect can be
-visualized too (they can also be set through the `CAP_YEARS` / `MIN_RENDEMENT_RATE` environment variables, e.g. under
+The same `--cap-years`, `--min-rate`, `--max-rate` and `--postpone-remainder` options as the command-line tool are available, so their effect can be
+visualized too (they can also be set through the `CAP_YEARS` / `MIN_RENDEMENT_RATE` / `MAX_RENDEMENT_RATE` / `POSTPONE_REMAINDER` environment variables, e.g. under
 `wsgi.py`); any value departing from the law is called out in the dashboard's explanation panel:
 
 ```bash
@@ -206,6 +220,8 @@ default `--auth otp-smtp`).
 | `GOOGLE_REDIRECT_URI` | *(unset)* | Must exactly match the redirect URI registered in Google Cloud Console, e.g. `https://<host>/auth/google/callback`. |
 | `CAP_YEARS` | `15` | Validity cap of a rendement period, in years (Art. 179, §5). Overridden by `--cap-years`. |
 | `MIN_RENDEMENT_RATE` | *(unset)* | Minimum rendement rate in €/month, as a base amount indexed like the threshold (see [How the rule is modeled](#how-the-rule-is-modeled)). Unset keeps the law's 24-month periods. Overridden by `--min-rate`. |
+| `MAX_RENDEMENT_RATE` | *(unset)* | Maximum rendement rate in €/month, indexed like `MIN_RENDEMENT_RATE` and strictly greater than it when both are set. Unset keeps the law's 24-month periods. Overridden by `--max-rate`. |
+| `POSTPONE_REMAINDER` | *(unset)* | Remainder in €, as a base amount indexed like the threshold, below which a period's last month is merged into the previous one. Unset keeps the law's behavior. Overridden by `--postpone-remainder`. |
 | `SESSION_SALT` | auto-generated, persisted to `.session_salt` | Salt used to hash identities into session keys. |
 | `FLASK_SECRET_KEY` | auto-generated, persisted to `.flask_secret` | Signs the session cookie. |
 

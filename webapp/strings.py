@@ -63,6 +63,17 @@ STRINGS = {
             "appliqué, ce qui raccourcit la période de rendement (et "
             "accélère la dégression) de {n_shortened} formation(s) moins coûteuse(s)."
         ),
+        "explanation_max_rate": (
+            "Hors loi : un taux de rendement maximal de {rate} €/mois (montant de base, indexé chaque mois comme le "
+            "seuil, soit {rate_now} €/mois ce mois-ci, avec l'indice {index} applicable depuis le {index_since}) est "
+            "appliqué, ce qui allonge la période de rendement (et "
+            "ralentit la dégression) de {n_lengthened} formation(s) plus coûteuse(s)."
+        ),
+        "explanation_postpone_remainder": (
+            "Hors loi : lorsque le dernier mois d'une période de rendement solderait moins de {amount} € (montant de "
+            "base, indexé chaque mois comme le seuil, soit {amount_now} € ce mois-ci), ce reliquat est reporté sur le "
+            "mois précédent, ce qui termine la période un mois plus tôt."
+        ),
         "departure_label": "Date de départ envisagée :",
         "no_valid_courses": "Aucune formation valide.",
         "total_label": "Total à rembourser",
@@ -179,6 +190,17 @@ STRINGS = {
             "sinds {index_since}), waardoor de rendementsperiode (en "
             "de degressie) van {n_shortened} goedkopere opleiding(en) korter wordt."
         ),
+        "explanation_max_rate": (
+            "Buiten de wet: er geldt een maximaal rendementspercentage van {rate} €/maand (basisbedrag, elke maand "
+            "geïndexeerd zoals de drempel, d.w.z. {rate_now} €/maand deze maand, met de index {index} van toepassing "
+            "sinds {index_since}), waardoor de rendementsperiode (en "
+            "de degressie) van {n_lengthened} duurdere opleiding(en) langer wordt."
+        ),
+        "explanation_postpone_remainder": (
+            "Buiten de wet: wanneer de laatste maand van een rendementsperiode minder dan {amount} € zou aflossen "
+            "(basisbedrag, elke maand geïndexeerd zoals de drempel, d.w.z. {amount_now} € deze maand), wordt dat "
+            "restbedrag bij de vorige maand gevoegd, waardoor de periode een maand vroeger eindigt."
+        ),
         "departure_label": "Beoogde vertrekdatum:",
         "no_valid_courses": "Geen geldige opleiding.",
         "total_label": "Terug te betalen bedrag",
@@ -292,6 +314,17 @@ STRINGS = {
             "threshold, i.e. {rate_now} €/month this month, with the index value {index} applicable since "
             "{index_since}) is applied, which shortens the rendement period (and "
             "speeds up the degression) of {n_shortened} cheaper course(s)."
+        ),
+        "explanation_max_rate": (
+            "Beyond the law: a maximum rendement rate of {rate} €/month (base amount, indexed every month like the "
+            "threshold, i.e. {rate_now} €/month this month, with the index value {index} applicable since "
+            "{index_since}) is applied, which lengthens the rendement period (and "
+            "slows down the degression) of {n_lengthened} more expensive course(s)."
+        ),
+        "explanation_postpone_remainder": (
+            "Beyond the law: when the last month of a rendement period would pay off less than {amount} € (base "
+            "amount, indexed every month like the threshold, i.e. {amount_now} € this month), this remainder is merged "
+            "into the previous month, which ends the period one month earlier."
         ),
         "departure_label": "Planned departure date:",
         "no_valid_courses": "No valid course.",

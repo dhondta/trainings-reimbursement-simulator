@@ -38,11 +38,26 @@ def main() -> None:
                               "courses; base amount, indexed every month like the threshold (default: "
                               "MIN_RENDEMENT_RATE env var, else none - not as of the law, which always spreads it "
                               f"over {REPAYMENT_MONTHS} months)")
+    parser.add_argument("--max-rate", type=parse_decimal, default=config.MAX_RENDEMENT_RATE,
+                         help="maximum rendement rate in € per month, lengthening the rendement period of more "
+                              "expensive courses; base amount, indexed every month like the threshold, and strictly "
+                              "greater than --min-rate (default: MAX_RENDEMENT_RATE env var, else none - not as of the "
+                              f"law, which always spreads it over {REPAYMENT_MONTHS} months)")
+    parser.add_argument("--postpone-remainder", type=parse_decimal, default=config.POSTPONE_REMAINDER,
+                         help="amount in € below which the last month of a rendement period is merged into the "
+                              "previous one, ending the period one month earlier; base amount, indexed every month "
+                              "like the threshold (default: POSTPONE_REMAINDER env var, else none - not as of the law)")
     args = parser.parse_args()
     if args.cap_years <= 0:
         parser.error("--cap-years must be strictly positive")
     if args.min_rate is not None and args.min_rate <= 0:
         parser.error("--min-rate must be strictly positive")
+    if args.max_rate is not None and args.max_rate <= 0:
+        parser.error("--max-rate must be strictly positive")
+    if args.min_rate is not None and args.max_rate is not None and args.max_rate <= args.min_rate:
+        parser.error("--max-rate must be strictly greater than --min-rate")
+    if args.postpone_remainder is not None and args.postpone_remainder <= 0:
+        parser.error("--postpone-remainder must be strictly positive")
     if args.hash_password is not None:
         print(generate_password_hash(args.hash_password))
         raise SystemExit(0)
@@ -50,6 +65,8 @@ def main() -> None:
     config.AUTH_METHOD = args.auth
     config.CAP_YEARS = args.cap_years
     config.MIN_RENDEMENT_RATE = args.min_rate
+    config.MAX_RENDEMENT_RATE = args.max_rate
+    config.POSTPONE_REMAINDER = args.postpone_remainder
     # Debug mode keeps hot reload and server-side tracebacks, but not Dash's dev tools pane at the bottom of the page.
     app.run(debug=args.debug, dev_tools_ui=args.debug)
 

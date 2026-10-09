@@ -11,7 +11,8 @@ from pathlib import Path
 from dash import html
 
 from simulator import CAP_YEARS as LAW_CAP_YEARS, Course, REPAYMENT_MONTHS, add_months, build_period_status_timeline, \
-                      build_rendement_periods, index_period, indexed_min_rate, money, parse_date, parse_decimal
+                      build_rendement_periods, index_period, indexed_max_rate, indexed_min_rate, \
+                      indexed_postpone_remainder, money, parse_date, parse_decimal
 
 from . import config
 from .auth import session_dir
@@ -36,7 +37,8 @@ def detail_status(detail: dict) -> str | None:
 def explanation_items(t: dict, courses, triggering_courses, details: list[dict], timeline_by_course: dict,
                       departure_date: date, total: Decimal) -> list[str]:
     """ How the four criteria of the law concretely apply to a simulation, with the actual numbers behind the departure
-     date, plus a note for each setting departing from the law (see the --cap-years / --min-rate CLI flags). Shared by
+     date, plus a note for each setting departing from the law (see the --cap-years / --min-rate / --max-rate /
+     --postpone-remainder CLI flags). Shared by
      the dashboard's explanation panel and the PDF report. """
     departure_str = departure_date.strftime("%d/%m/%y")
     n_owing = sum(1 for d in details if d["months_remaining"] > 0)
@@ -64,6 +66,19 @@ def explanation_items(t: dict, courses, triggering_courses, details: list[dict],
             rate=f"{config.MIN_RENDEMENT_RATE:.2f}",
             rate_now=f"{indexed_min_rate(departure_date, config.MIN_RENDEMENT_RATE):.2f}",
             n_shortened=sum(1 for d in details if d["required_months"] < REPAYMENT_MONTHS),
+        ))
+    if config.MAX_RENDEMENT_RATE is not None:
+        index_since, _index_until, index_value = index_period(departure_date)
+        items.append(t["explanation_max_rate"].format(
+            index=index_value, index_since=index_since.strftime("%d/%m/%y"),
+            rate=f"{config.MAX_RENDEMENT_RATE:.2f}",
+            rate_now=f"{indexed_max_rate(departure_date, config.MAX_RENDEMENT_RATE):.2f}",
+            n_lengthened=sum(1 for d in details if d["required_months"] > REPAYMENT_MONTHS),
+        ))
+    if config.POSTPONE_REMAINDER is not None:
+        items.append(t["explanation_postpone_remainder"].format(
+            amount=f"{config.POSTPONE_REMAINDER:.2f}",
+            amount_now=f"{indexed_postpone_remainder(departure_date, config.POSTPONE_REMAINDER):.2f}",
         ))
     return items
 
@@ -150,9 +165,11 @@ def presets_for_session() -> dict[str, Path]:
 
 
 def rendement_periods(triggering_courses: list[Course]) -> list:
-    """ The triggering courses' rendement periods, built with the app-wide validity cap and minimum rendement rate. """
+    """ The triggering courses' rendement periods, built with the app-wide validity cap, minimum/maximum rendement
+     rates and postponement of small remainders. """
     return build_rendement_periods(triggering_courses, cap_months=config.CAP_YEARS * 12,
-                                   min_rate=config.MIN_RENDEMENT_RATE)
+                                   min_rate=config.MIN_RENDEMENT_RATE, max_rate=config.MAX_RENDEMENT_RATE,
+                                   postpone_remainder=config.POSTPONE_REMAINDER)
 
 
 def rows_to_courses(rows: list[dict], lang: str = config.DEFAULT_LANG) -> tuple[list[Course], list[str]]:

@@ -93,6 +93,19 @@ GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI")
 MIN_RENDEMENT_RATE = parse_decimal(os.environ["MIN_RENDEMENT_RATE"]) if os.environ.get("MIN_RENDEMENT_RATE") else None
 if MIN_RENDEMENT_RATE is not None and MIN_RENDEMENT_RATE <= 0:
     raise ValueError("MIN_RENDEMENT_RATE must be strictly positive")
+# Optional maximum rendement rate in € per month (see simulator.MAX_RENDEMENT_RATE; --max-rate CLI flag): unset keeps
+#  the 24-month periods prescribed by the law, otherwise more expensive triggering courses get proportionally longer
+#  periods. Indexed like MIN_RENDEMENT_RATE, and strictly greater than it when both are set.
+MAX_RENDEMENT_RATE = parse_decimal(os.environ["MAX_RENDEMENT_RATE"]) if os.environ.get("MAX_RENDEMENT_RATE") else None
+if MAX_RENDEMENT_RATE is not None and MAX_RENDEMENT_RATE <= 0:
+    raise ValueError("MAX_RENDEMENT_RATE must be strictly positive")
+if MIN_RENDEMENT_RATE is not None and MAX_RENDEMENT_RATE is not None and MAX_RENDEMENT_RATE <= MIN_RENDEMENT_RATE:
+    raise ValueError("MAX_RENDEMENT_RATE must be strictly greater than MIN_RENDEMENT_RATE")
+# Optional remainder in € below which a period's last month is merged into the previous one (see
+#  simulator.POSTPONE_REMAINDER; --postpone-remainder CLI flag). It is a base amount, indexed like the threshold.
+POSTPONE_REMAINDER = parse_decimal(os.environ["POSTPONE_REMAINDER"]) if os.environ.get("POSTPONE_REMAINDER") else None
+if POSTPONE_REMAINDER is not None and POSTPONE_REMAINDER <= 0:
+    raise ValueError("POSTPONE_REMAINDER must be strictly positive")
 # Security limits: the most course rows a table may hold (enforced server-side on uploads, presets, added/pasted rows
 #  and every computation), and the largest CSV file accepted by the "Import CSV" upload, in bytes.
 MAX_COURSES = 50

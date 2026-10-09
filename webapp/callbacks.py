@@ -279,7 +279,7 @@ def update_charts(rows, slider_value, lang):
                              font_size="24px")
     # Rendement rate: amount served during the current month, i.e. the month starting on the slider's departure date
     #  (always the 1st of a month), by the course actively accruing rendement that month in the full (unsplit) pyramid -
-    #  at that month's rate, which follows the index when a minimum rendement rate is set.
+    #  at that month's rate, which follows the index when a minimum or maximum rendement rate is set.
     current_month = departure_date
     if (active_now := active_rendement(periods, current_month)) is None:
         rate_card = info_card(t["rate_label"], t["rate_none"])

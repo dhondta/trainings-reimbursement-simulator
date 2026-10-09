@@ -19,6 +19,17 @@ REPAYMENT_MONTHS = 24
 #  BASE_THRESHOLD, it is a base amount, indexed with the coefficient applicable in the month being served - so the rate
 #  rises with the index during a rendement period. None (the default) keeps the behavior prescribed by the current law.
 MIN_RENDEMENT_RATE: Decimal | None = None
+# Optional maximum rendement rate, in € per month of service (NOT part of the law either): when set, each month served
+#  pays off at most this amount of the course's price, so that an expensive triggering course ties the employee down for
+#  longer than 24 months. Indexed like MIN_RENDEMENT_RATE, and must be strictly greater than it when both are set. None
+#  (the default) keeps the behavior prescribed by the current law.
+MAX_RENDEMENT_RATE: Decimal | None = None
+# Optional postponement of a small remainder, in € (NOT part of the law either): when the last month of a rendement
+#  period would only pay off less than this amount, the remainder is merged into the previous month instead, so that the
+#  period ends one month earlier rather than tying the employee down for a full month over a small amount. That month
+#  may then exceed the maximum rendement rate, if any. Like BASE_THRESHOLD, it is a base amount, indexed with the
+#  coefficient applicable in the month concerned. None (the default) keeps the behavior prescribed by the current law.
+POSTPONE_REMAINDER: Decimal | None = None
 # Maximum validity period of a rendement period (art. 179, §5): once this delay has elapsed since the period started,
 #  the clause no longer produces any effect — the reimbursement obligation for this course lapses, even if the 24 months
 #  of rendement have not been served.
@@ -51,6 +62,9 @@ class Rendement:
     served: Fraction = Fraction(0)           # Part of the price already paid off by these months of rendement.
     cap_months: int = CAP_MONTHS             # Validity period of the clause for this period (art. 179, §5).
     min_rate: Decimal | None = None          # Base (non-indexed) minimum rendement rate, if any.
+    max_rate: Decimal | None = None          # Base (non-indexed) maximum rendement rate, if any.
+    postpone_remainder: Decimal | None = None  # Base (non-indexed) remainder below which a last month is merged
+                                               #  into the previous one, if any.
     
     @property
     def balance(self) -> Fraction:
@@ -71,19 +85,40 @@ class Rendement:
     
     def monthly_rate(self, month: date) -> Fraction:
         """ Part of the price paid off by one month of rendement served in the given month: price / 24 as of the law,
-         raised to the minimum rendement rate indexed at that month, if any. """
+         raised to the minimum rendement rate and lowered to the maximum rendement rate indexed at that month, if any. """
         rate = Fraction(self.course.price) / REPAYMENT_MONTHS
         if self.min_rate is not None:
             rate = max(rate, Fraction(indexed_min_rate(month, self.min_rate)))
+        if self.max_rate is not None:
+            rate = min(rate, Fraction(indexed_max_rate(month, self.max_rate)))
         return rate
+    
+    def amount_due(self, balance: Fraction, month: date) -> Fraction:
+        """ Part of the given balance paid off by one month of rendement served in the given month: the monthly rate,
+         or the whole balance if it is lower - or if what would be left afterwards is a small remainder (see
+         is_small_remainder; it is then merged into this month). """
+        rate = self.monthly_rate(month)
+        if self.is_small_remainder(balance - rate, month):
+            return balance
+        return min(balance, rate)
+    
+    def is_small_remainder(self, amount: Fraction, month: date) -> bool:
+        """ Whether a last month paying off the given amount in the given month is to be merged into the previous month
+         served (postpone_remainder set and amount below it, indexed at that month). """
+        return self.postpone_remainder is not None \
+               and amount < Fraction(indexed_postpone_remainder(month, self.postpone_remainder))
     
     def months_to_clear(self, balance: Fraction, from_month: date) -> int:
         """ Number of consecutive months of rendement, starting from from_month, needed to pay off the given balance.
          Months past the last known index use its coefficient (the last indexation period is open-ended). """
-        months, month = 0, from_month
+        months, month, amount = 0, from_month, Fraction(0)
         while balance > 0:
-            balance -= min(balance, self.monthly_rate(month))
+            amount = self.amount_due(balance, month)
+            balance -= amount
             months, month = months + 1, next_month(month)
+        # A small last month (e.g. once the index has risen) is merged into the previous one.
+        if months > 1 and self.is_small_remainder(amount, add_months(month, -1)):
+            months -= 1
         return months
 
 
@@ -130,12 +165,44 @@ def indexed_min_rate(at_date: date, min_rate: Decimal | None = MIN_RENDEMENT_RAT
     return money(min_rate * index_coefficient(at_date))
 
 
+def indexed_max_rate(at_date: date, max_rate: Decimal | None = MAX_RENDEMENT_RATE) -> Decimal | None:
+    """ The maximum rendement rate (a base amount, like BASE_THRESHOLD) indexed with the coefficient applicable at
+     at_date, or None if no maximum rate is set. """
+    if max_rate is None:
+        return None
+    if max_rate <= 0:
+        raise ValueError("maximum rendement rate must be strictly positive")
+    return money(max_rate * index_coefficient(at_date))
+
+
+def indexed_postpone_remainder(at_date: date, remainder: Decimal | None = POSTPONE_REMAINDER) -> Decimal | None:
+    """ The remainder below which a last month is merged into the previous one (a base amount, like BASE_THRESHOLD)
+     indexed with the coefficient applicable at at_date, or None if no such remainder is set. """
+    if remainder is None:
+        return None
+    if remainder <= 0:
+        raise ValueError("remainder to postpone must be strictly positive")
+    return money(remainder * index_coefficient(at_date))
+
+
 def fraction_to_decimal(value: Fraction) -> Decimal:
     return Decimal(value.numerator) / Decimal(value.denominator)
 
 
 def fraction_to_money(value: Fraction) -> Decimal:
     return money(fraction_to_decimal(value))
+
+
+def validate_rates(min_rate: Decimal | None, max_rate: Decimal | None) -> None:
+    """ Checks the optional minimum and maximum rendement rates: each strictly positive, and the maximum strictly
+     greater than the minimum when both are set. Raises ValueError otherwise. """
+    if min_rate is not None and min_rate <= 0:
+        raise ValueError("minimum rendement rate must be strictly positive")
+    if max_rate is not None and max_rate <= 0:
+        raise ValueError("maximum rendement rate must be strictly positive")
+    if min_rate is not None and max_rate is not None and max_rate <= min_rate:
+        raise ValueError(f"maximum rendement rate ({max_rate}) must be strictly greater than the minimum rendement "
+                         f"rate ({min_rate})")
 
 
 def money(value: Decimal) -> Decimal:
@@ -193,15 +260,57 @@ def schedule_rendement(periods: list[Rendement], until: date):
      part of its price paid off that month. Works on local balances: the periods themselves are not modified. """
     if not periods:
         return
+    yield from _schedule_months(periods, until, _postponed_remainders(periods))
+
+
+def _postponed_remainders(periods: list[Rendement]) -> dict[int, set[date]]:
+    """ For the periods with postpone_remainder, the months in which they must pay off their whole balance, so that a
+     small last month is merged into the previous month served - even when a more recent period was served in between
+     (the remainder, deferred until it completes, may then fall below a postpone_remainder raised by the index
+     meanwhile).
+     Found by simulating the whole schedule until every period ends, then forcing each small last month into the
+     previous one and simulating again, until no small last month is left (each pass forces at least one more merge,
+     each one shortening a period, so this terminates). """
+    forced: dict[int, set[date]] = {id(p): set() for p in periods}
+    if not any(p.postpone_remainder is not None for p in periods):
+        return forced
+    while True:
+        payments: dict[int, list[tuple[date, Fraction]]] = {id(p): [] for p in periods}
+        served = {id(p): Fraction(0) for p in periods}
+        for current, _available, active, amount in _schedule_months(periods, None, forced):
+            if active is not None:
+                payments[id(active)].append((current, amount))
+                served[id(active)] += amount
+        changed = False
+        for p in periods:
+            months = payments[id(p)]
+            # Only a period actually completed by its last month (not one cut short by its cap) has a remainder to merge.
+            if len(months) < 2 or served[id(p)] < Fraction(p.course.price):
+                continue
+            (previous_month, _), (last_month, last_amount) = months[-2], months[-1]
+            if p.is_small_remainder(last_amount, last_month):
+                forced[id(p)].add(previous_month)
+                changed = True
+        if not changed:
+            return forced
+
+
+def _schedule_months(periods: list[Rendement], until: date | None, forced: dict[int, set[date]]):
+    """ See schedule_rendement; with until None, runs until no period is left to be served. forced gives, per period,
+     the months in which it pays off its whole balance (see _postponed_remainders). """
     current = min(p.start_date for p in periods)
     served = {id(p): Fraction(0) for p in periods}
-    while current < until:
+    last_start = max(p.start_date for p in periods)
+    while until is None or current < until:
         available = [p for p in periods if p.start_date <= current and served[id(p)] < Fraction(p.course.price) \
                                            and not p.capped_at(current)]
+        if until is None and not available and current > last_start:
+            return
         available.sort(key=lambda p: p.start_date, reverse=True)
         active, amount = (available[0] if available else None), Fraction(0)
         if active is not None:
-            amount = min(Fraction(active.course.price) - served[id(active)], active.monthly_rate(current))
+            balance = Fraction(active.course.price) - served[id(active)]
+            amount = balance if current in forced[id(active)] else active.amount_due(balance, current)
             served[id(active)] += amount
         yield current, available, active, amount
         current = next_month(current)
@@ -251,13 +360,16 @@ def build_period_status_timeline(periods: list[Rendement], as_of_date: date) -> 
 
 
 def build_rendement_periods(triggering_courses: list[Course], cap_months: int = CAP_MONTHS,
-                            min_rate: Decimal | None = MIN_RENDEMENT_RATE) -> list[Rendement]:
-    if min_rate is not None and min_rate <= 0:
-        raise ValueError("minimum rendement rate must be strictly positive")
+                            min_rate: Decimal | None = MIN_RENDEMENT_RATE,
+                            max_rate: Decimal | None = MAX_RENDEMENT_RATE,
+                            postpone_remainder: Decimal | None = POSTPONE_REMAINDER) -> list[Rendement]:
+    validate_rates(min_rate, max_rate)
+    if postpone_remainder is not None and postpone_remainder <= 0:
+        raise ValueError("remainder to postpone must be strictly positive")
     periods = []
     for c in triggering_courses:
         periods.append(Rendement(course=c, start_date=first_day_next_month(c.end_date), cap_months=cap_months,
-                                 min_rate=min_rate))
+                                 min_rate=min_rate, max_rate=max_rate, postpone_remainder=postpone_remainder))
     return sorted(periods, key=lambda p: p.start_date)
 
 
@@ -298,6 +410,7 @@ def calculate_reimbursement(periods: list[Rendement], departure_date: date) -> t
             "required_months":  period.months_served + uncapped_remaining,
             "monthly_rate":     None if period.completed else fraction_to_money(period.monthly_rate(departure_date)),
             "min_rate":         period.min_rate,
+            "max_rate":         period.max_rate,
             "months_served":    period.months_served,
             "months_remaining": remaining,
             "reimbursement":    reimbursement,
@@ -398,9 +511,9 @@ def print_triggering_courses(audit: list[dict]) -> None:
 
 def print_reimbursement_details(details: list[dict]) -> None:
     print("\nDETAILS OF THE REIMBURSEMENT" + "=" * 120)
-    with_min_rate = any(row["min_rate"] is not None for row in details)
+    with_rate = any(row["min_rate"] is not None or row["max_rate"] is not None for row in details)
     print(header := f"{'Course':8} {'Fin':12} {'Start':12} {'Cost':12} {'Required':8} {'Served':8} {'Remaining':8} " \
-                    f"{'Reimbursement':16} {'Status':16}" + (" Rate (this month)" if with_min_rate else ""))
+                    f"{'Reimbursement':16} {'Status':16}" + (" Rate (this month)" if with_rate else ""))
     print("-" * len(header))
     for row in details:
         status = f"CAPPED (-{row['months_forgiven']}m)" if row["months_forgiven"] > 0 else \
@@ -409,7 +522,7 @@ def print_reimbursement_details(details: list[dict]) -> None:
               f"{row['rendement_start'].strftime('%d/%m/%Y'):12} {row['cost']:>10.2f} € {row['required_months']:>8} "
               f"{row['months_served']:>7} "
               f"{row['months_remaining']:>7} {row['reimbursement']:>14.2f} € {status:16}"
-              + (f" {row['monthly_rate']:>10.2f} €/month" if with_min_rate and row["monthly_rate"] is not None \
+              + (f" {row['monthly_rate']:>10.2f} €/month" if with_rate and row["monthly_rate"] is not None \
                  else ""))
     forgiven_rows = [row for row in details if row["months_forgiven"] > 0]
     if forgiven_rows:
@@ -420,20 +533,22 @@ def print_reimbursement_details(details: list[dict]) -> None:
 
 def print_timeline(periods: list[Rendement], departure_date: date) -> None:
     print("\nTIMELINE OF RENDEMENT" + "=" * 120)
-    with_min_rate = any(p.min_rate is not None for p in periods)
+    with_rate = any(p.min_rate is not None or p.max_rate is not None for p in periods)
     # Local balances (see schedule_rendement), so as not to modify the actual results.
     for current, _available, active, amount in schedule_rendement(periods, departure_date):
         if active is not None:
             print(f"{current.strftime('%m/%Y')} : {active.course.code}"
-                  + (f" ({fraction_to_money(amount):.2f}€)" if with_min_rate else ""))
+                  + (f" ({fraction_to_money(amount):.2f}€)" if with_rate else ""))
         else:
             print(f"{current.strftime('%m/%Y')} : no active rendement")
 
 
 def simulate(courses: list[Course], departure_date: date, verbose: bool = True, cap_months: int = CAP_MONTHS,
-             min_rate: Decimal | None = MIN_RENDEMENT_RATE) -> Decimal:
+             min_rate: Decimal | None = MIN_RENDEMENT_RATE, max_rate: Decimal | None = MAX_RENDEMENT_RATE,
+             postpone_remainder: Decimal | None = POSTPONE_REMAINDER) -> Decimal:
     triggering_courses, audit = determine_triggering_courses(courses)
-    periods = build_rendement_periods(triggering_courses, cap_months=cap_months, min_rate=min_rate)
+    periods = build_rendement_periods(triggering_courses, cap_months=cap_months, min_rate=min_rate,
+                                      max_rate=max_rate, postpone_remainder=postpone_remainder)
     total, details = calculate_reimbursement(periods, departure_date)
     if verbose:
         print("\n" + "=" * 120)
@@ -443,6 +558,12 @@ def simulate(courses: list[Course], departure_date: date, verbose: bool = True, 
         if min_rate is not None:
             print(f"Indexed minimum rendement rate at this date : "
                   f"{indexed_min_rate(departure_date, min_rate):.2f}€/month")
+        if max_rate is not None:
+            print(f"Indexed maximum rendement rate at this date : "
+                  f"{indexed_max_rate(departure_date, max_rate):.2f}€/month")
+        if postpone_remainder is not None:
+            print(f"Indexed remainder to postpone at this date : "
+                  f"{indexed_postpone_remainder(departure_date, postpone_remainder):.2f}€")
         print_triggering_courses(audit)
         print_reimbursement_details(details)
         print("\n" + "=" * 120)
@@ -463,10 +584,24 @@ def main() -> int:
                         help="minimum rendement rate in € per month, shortening the rendement period of cheaper "
                              "courses ; base amount, indexed like the threshold with the coefficient of each month "
                              f"served (not as of the law, which always spreads it over {REPAYMENT_MONTHS} months)")
+    parser.add_argument("--max-rate", type=parse_decimal, default=MAX_RENDEMENT_RATE,
+                        help="maximum rendement rate in € per month, lengthening the rendement period of more "
+                             "expensive courses ; base amount, indexed like --min-rate, and strictly greater than it "
+                             f"(not as of the law, which always spreads it over {REPAYMENT_MONTHS} months)")
+    parser.add_argument("--postpone-remainder", type=parse_decimal, default=POSTPONE_REMAINDER,
+                        help="amount in € below which the last month of a rendement period is merged into the previous "
+                             "one, ending the period one month earlier ; base amount, indexed like --min-rate and "
+                             "--max-rate (not as of the law)")
     args = parser.parse_args()
     cap_months = args.cap_years * 12
     if args.min_rate is not None and args.min_rate <= 0:
         parser.error("--min-rate must be strictly positive")
+    if args.max_rate is not None and args.max_rate <= 0:
+        parser.error("--max-rate must be strictly positive")
+    if args.min_rate is not None and args.max_rate is not None and args.max_rate <= args.min_rate:
+        parser.error("--max-rate must be strictly greater than --min-rate")
+    if args.postpone_remainder is not None and args.postpone_remainder <= 0:
+        parser.error("--postpone-remainder must be strictly positive")
     try:
         courses = load_courses(args.csv)
     except Exception as exc:
@@ -481,11 +616,21 @@ def main() -> int:
         print(f"Minimum rendement rate: {args.min_rate:.2f}€/month base, indexed with the coefficient of each month "
               f"served (today: {indexed_min_rate(date.today(), args.min_rate):.2f}€/month) - not as of the law: "
               "shorter periods for cheaper courses")
+    if args.max_rate is not None:
+        print(f"Maximum rendement rate: {args.max_rate:.2f}€/month base, indexed with the coefficient of each month "
+              f"served (today: {indexed_max_rate(date.today(), args.max_rate):.2f}€/month) - not as of the law: "
+              "longer periods for more expensive courses")
+    if args.postpone_remainder is not None:
+        print(f"Remainder to postpone: {args.postpone_remainder:.2f}€ base, indexed with the coefficient of each month "
+              f"served (today: {indexed_postpone_remainder(date.today(), args.postpone_remainder):.2f}€) - not as of "
+              "the law: a smaller last month is merged into the previous one")
     for departure_date in departure_dates:
-        simulate(courses, departure_date, cap_months=cap_months, min_rate=args.min_rate)
+        simulate(courses, departure_date, cap_months=cap_months, min_rate=args.min_rate, max_rate=args.max_rate,
+                 postpone_remainder=args.postpone_remainder)
     if args.timeline:  # optional timeline
         triggering_courses, _ = determine_triggering_courses(courses)
-        periods = build_rendement_periods(triggering_courses, cap_months=cap_months, min_rate=args.min_rate)
+        periods = build_rendement_periods(triggering_courses, cap_months=cap_months, min_rate=args.min_rate,
+                                          max_rate=args.max_rate, postpone_remainder=args.postpone_remainder)
         if periods:
             print(f"\nTIMELINE UNTIL {max(departure_dates).strftime('%d/%m/%Y')}")
             print_timeline(periods, max(departure_dates))
