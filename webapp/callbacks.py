@@ -208,7 +208,7 @@ def update_charts(rows, slider_value, lang):
     # --------------------------------------------------------
     # Horizontal bar chart: rendement periods, as accurate month-by-month runs of "served" / "suspended" (a more recent
     #  course's period took priority). Each period stays suspended until every more recent one has itself fully
-    #  completed its 24 months, so the timeline is built out to a horizon far past the selected departure date - not
+    #  completed its rendement, so the timeline is built out to a horizon far past the selected departure date - not
     #  capped at it - to let that chain of suspensions fully unwind into the pyramid of real completion dates.
     # Plotly plots a numeric bar "length" against a date axis as a duration in MILLISECONDS from `base`. The length must
     #  therefore be converted to an actual calendar span (in ms) between the real start/end dates of each run, not

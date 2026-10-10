@@ -160,9 +160,14 @@ def index_period(at_date: date) -> tuple[date, date | None, Decimal]:
     raise ValueError(f"No indexation coefficient defined for {at_date.strftime('%d/%m/%Y')}")
 
 
-def indexed_threshold(at_date: date) -> Decimal:
-    coefficient = index_coefficient(at_date)
-    return money(BASE_THRESHOLD * coefficient)
+def indexed_max_rate(at_date: date, max_rate: Decimal | None = MAX_RENDEMENT_RATE) -> Decimal | None:
+    """ The maximum rendement rate (a base amount, like BASE_THRESHOLD) indexed with the coefficient applicable at
+     at_date, or None if no maximum rate is set. """
+    if max_rate is None:
+        return None
+    if max_rate <= 0:
+        raise ValueError("maximum rendement rate must be strictly positive")
+    return money(max_rate * index_coefficient(at_date))
 
 
 def indexed_min_rate(at_date: date, min_rate: Decimal | None = MIN_RENDEMENT_RATE) -> Decimal | None:
@@ -175,16 +180,6 @@ def indexed_min_rate(at_date: date, min_rate: Decimal | None = MIN_RENDEMENT_RAT
     return money(min_rate * index_coefficient(at_date))
 
 
-def indexed_max_rate(at_date: date, max_rate: Decimal | None = MAX_RENDEMENT_RATE) -> Decimal | None:
-    """ The maximum rendement rate (a base amount, like BASE_THRESHOLD) indexed with the coefficient applicable at
-     at_date, or None if no maximum rate is set. """
-    if max_rate is None:
-        return None
-    if max_rate <= 0:
-        raise ValueError("maximum rendement rate must be strictly positive")
-    return money(max_rate * index_coefficient(at_date))
-
-
 def indexed_postpone_remainder(at_date: date, remainder: Decimal | None = POSTPONE_REMAINDER) -> Decimal | None:
     """ The remainder below which a last month is merged into the previous one (a base amount, like BASE_THRESHOLD)
      indexed with the coefficient applicable at at_date, or None if no such remainder is set. """
@@ -195,24 +190,17 @@ def indexed_postpone_remainder(at_date: date, remainder: Decimal | None = POSTPO
     return money(remainder * index_coefficient(at_date))
 
 
+def indexed_threshold(at_date: date) -> Decimal:
+    coefficient = index_coefficient(at_date)
+    return money(BASE_THRESHOLD * coefficient)
+
+
 def fraction_to_decimal(value: Fraction) -> Decimal:
     return Decimal(value.numerator) / Decimal(value.denominator)
 
 
 def fraction_to_money(value: Fraction) -> Decimal:
     return money(fraction_to_decimal(value))
-
-
-def validate_rates(min_rate: Decimal | None, max_rate: Decimal | None) -> None:
-    """ Checks the optional minimum and maximum rendement rates: each strictly positive, and the maximum strictly
-     greater than the minimum when both are set. Raises ValueError otherwise. """
-    if min_rate is not None and min_rate <= 0:
-        raise ValueError("minimum rendement rate must be strictly positive")
-    if max_rate is not None and max_rate <= 0:
-        raise ValueError("maximum rendement rate must be strictly positive")
-    if min_rate is not None and max_rate is not None and max_rate <= min_rate:
-        raise ValueError(f"maximum rendement rate ({max_rate}) must be strictly greater than the minimum rendement "
-                         f"rate ({min_rate})")
 
 
 def money(value: Decimal) -> Decimal:
@@ -253,26 +241,19 @@ def parse_decimal(value: str) -> Decimal:
     return Decimal(value)
 
 
+def validate_rates(min_rate: Decimal | None, max_rate: Decimal | None) -> None:
+    """ Checks the optional minimum and maximum rendement rates: each strictly positive, and the maximum strictly
+     greater than the minimum when both are set. Raises ValueError otherwise. """
+    if min_rate is not None and min_rate <= 0:
+        raise ValueError("minimum rendement rate must be strictly positive")
+    if max_rate is not None and max_rate <= 0:
+        raise ValueError("maximum rendement rate must be strictly positive")
+    if min_rate is not None and max_rate is not None and max_rate <= min_rate:
+        raise ValueError(f"maximum rendement rate ({max_rate}) must be strictly greater than the minimum rendement "
+                         f"rate ({min_rate})")
+
+
 # ===================================================== MAIN LOGIC =====================================================
-def active_rendement(periods: list[Rendement], month: date) -> tuple[Rendement, Decimal] | None:
-    """ The period actively accruing rendement in the given month (in the full pyramid), with the amount of its price
-     paid off that month, or None if no period is being served. """
-    for current, _available, active, amount in schedule_rendement(periods, next_month(month)):
-        if current == month and active is not None:
-            return active, fraction_to_money(amount)
-    return None
-
-
-def schedule_rendement(periods: list[Rendement], until: date):
-    """ Month by month from the first period's start up to (excluding) until, yields (month, available, active, amount):
-     the periods available that month (started, not yet paid off, clause not expired - art. 179, §5), most recent
-     first, the active one among them (the most recent: it suspends the older ones; None if none is available) and the
-     part of its price paid off that month. Works on local balances: the periods themselves are not modified. """
-    if not periods:
-        return
-    yield from _schedule_months(periods, until, _postponed_remainders(periods))
-
-
 def _postponed_remainders(periods: list[Rendement]) -> dict[int, set[date]]:
     """ For the periods with postpone_remainder, the months in which they must pay off their whole balance, so that a
      small last month is merged into the previous month served - even when a more recent period was served in between
@@ -324,6 +305,15 @@ def _schedule_months(periods: list[Rendement], until: date | None, forced: dict[
             served[id(active)] += amount
         yield current, available, active, amount
         current = next_month(current)
+
+
+def active_rendement(periods: list[Rendement], month: date) -> tuple[Rendement, Decimal] | None:
+    """ The period actively accruing rendement in the given month (in the full pyramid), with the amount of its price
+     paid off that month, or None if no period is being served. """
+    for current, _available, active, amount in schedule_rendement(periods, next_month(month)):
+        if current == month and active is not None:
+            return active, fraction_to_money(amount)
+    return None
 
 
 def build_period_status_timeline(periods: list[Rendement], as_of_date: date) -> dict[str, list[dict]]:
@@ -383,6 +373,26 @@ def build_rendement_periods(triggering_courses: list[Course], cap_months: int = 
     return sorted(periods, key=lambda p: p.start_date)
 
 
+def bundle_courses(courses: list[Course]) -> list[Course]:
+    """ Merges the courses sharing a same bundle into a single course, named after the bundle: its price is the sum of
+     theirs and its end date the latest of theirs, so that it is tested against the threshold as one course and, if it
+     triggers, gets a single rendement period starting after its last course. Courses without a bundle are kept as is.
+     Raises ValueError if a bundle is named like a course outside of it (both would then be indistinguishable). """
+    groups: dict[str, list[Course]] = {}
+    result = []
+    for course in courses:
+        if course.bundle:
+            groups.setdefault(course.bundle, []).append(course)
+        else:
+            result.append(course)
+    if clashes := sorted(set(groups) & {c.code for c in result}):
+        raise ValueError(f"bundle(s) named like a course outside of them: {', '.join(clashes)}")
+    for name, members in groups.items():
+        result.append(Course(code=name, price=sum((c.price for c in members), Decimal("0.00")),
+                             end_date=max(c.end_date for c in members), members=tuple(c.code for c in members)))
+    return sorted(result, key=lambda c: c.end_date)
+
+
 def calculate_reimbursement(periods: list[Rendement], departure_date: date) -> tuple[Decimal, list[dict]]:
     if not periods:
         return Decimal("0.00"), []
@@ -431,26 +441,6 @@ def calculate_reimbursement(periods: list[Rendement], departure_date: date) -> t
             "amount_forgiven":  fraction_to_decimal(period.balance) if capped else Decimal("0"),
         })
     return money(total), details
-
-
-def bundle_courses(courses: list[Course]) -> list[Course]:
-    """ Merges the courses sharing a same bundle into a single course, named after the bundle: its price is the sum of
-     theirs and its end date the latest of theirs, so that it is tested against the threshold as one course and, if it
-     triggers, gets a single rendement period starting after its last course. Courses without a bundle are kept as is.
-     Raises ValueError if a bundle is named like a course outside of it (both would then be indistinguishable). """
-    groups: dict[str, list[Course]] = {}
-    result = []
-    for course in courses:
-        if course.bundle:
-            groups.setdefault(course.bundle, []).append(course)
-        else:
-            result.append(course)
-    if clashes := sorted(set(groups) & {c.code for c in result}):
-        raise ValueError(f"bundle(s) named like a course outside of them: {', '.join(clashes)}")
-    for name, members in groups.items():
-        result.append(Course(code=name, price=sum((c.price for c in members), Decimal("0.00")),
-                             end_date=max(c.end_date for c in members), members=tuple(c.code for c in members)))
-    return sorted(result, key=lambda c: c.end_date)
 
 
 def determine_triggering_courses(courses: list[Course]) -> tuple[list[Course], list[dict]]:
@@ -575,6 +565,29 @@ def print_timeline(periods: list[Rendement], departure_date: date) -> None:
                   + (f" ({fraction_to_money(amount):.2f}€)" if with_rate else ""))
         else:
             print(f"{current.strftime('%m/%Y')} : no active rendement")
+
+
+def rendement_end_date(periods: list[Rendement]) -> date | None:
+    """ The 1st of the month following the last month of rendement served in the full schedule, i.e. once every period
+     has either been paid off or expired (art. 179, §5), following the whole chain of suspensions - whatever the
+     periods' lengths (e.g. longer than 24 months with a maximum rendement rate). None if no month is ever served. """
+    if not periods:
+        return None
+    last = None
+    for current, _available, active, _amount in _schedule_months(periods, None, _postponed_remainders(periods)):
+        if active is not None:
+            last = current
+    return next_month(last) if last else None
+
+
+def schedule_rendement(periods: list[Rendement], until: date):
+    """ Month by month from the first period's start up to (excluding) until, yields (month, available, active, amount):
+     the periods available that month (started, not yet paid off, clause not expired - art. 179, §5), most recent
+     first, the active one among them (the most recent: it suspends the older ones; None if none is available) and the
+     part of its price paid off that month. Works on local balances: the periods themselves are not modified. """
+    if not periods:
+        return
+    yield from _schedule_months(periods, until, _postponed_remainders(periods))
 
 
 def simulate(courses: list[Course], departure_date: date, verbose: bool = True, cap_months: int = CAP_MONTHS,

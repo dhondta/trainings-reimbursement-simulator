@@ -11,7 +11,7 @@ from pathlib import Path
 from dash import html
 
 from simulator import BUNDLE_COLUMN, CAP_YEARS as LAW_CAP_YEARS, Course, REPAYMENT_MONTHS, add_months, build_period_status_timeline, \
-                      build_rendement_periods, bundle_courses, index_period, indexed_max_rate, indexed_min_rate, \
+                      build_rendement_periods, bundle_courses, rendement_end_date, index_period, indexed_max_rate, indexed_min_rate, \
                       indexed_postpone_remainder, money, parse_date, parse_decimal
 
 from . import config
@@ -93,7 +93,7 @@ def final_rendement_completion_day(periods) -> date | None:
 
 def final_rendement_date(periods) -> date | None:
     """ The 1st of the month following the last served month, i.e. the exclusive boundary at which every period has
-     completed its 24 months of rendement (reimbursement is exactly 0 from this date on) - following the full suspension
+     completed its rendement (reimbursement is exactly 0 from this date on) - following the full suspension
      pyramid to its end.
     Used to size the slider's range; see final_rendement_completion_day for the inclusive, human-facing date."""
     if not periods:
@@ -277,15 +277,13 @@ def status_at_date(runs: list[dict], at_date: date) -> str:
 
 
 def timeline_horizon(periods) -> date:
-    """ A date far enough in the future that every period is guaranteed to have fully unwound its chain of suspensions
-     and completed its 24 months of rendement - i.e. the true end of the suspension "pyramid", not an arbitrary cutoff
-     at the selected departure date.
-    Worst case, periods complete strictly one after another (each one suspended until every more recent one is done), so
-     len(periods) * 24 months from the earliest start date is always enough. """
+    """ A date far enough in the future that every period has fully unwound its chain of suspensions and completed its
+     rendement - i.e. the true end of the suspension "pyramid", not an arbitrary cutoff at the selected departure date.
+    Taken from the full schedule (see simulator.rendement_end_date), as periods may last longer than 24 months (e.g.
+     with a maximum rendement rate). """
     if not periods:
         return date.today()
-    earliest_start = min(p.start_date for p in periods)
-    return add_months(earliest_start, len(periods) * REPAYMENT_MONTHS + 1)
+    return rendement_end_date(periods) or min(p.start_date for p in periods)
 
 
 def value_card(label: str, value: str | list, *extra: object, font_size: str = "28px") -> list:
