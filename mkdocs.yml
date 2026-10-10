@@ -1,0 +1,48 @@
+site_name: Training Reimbursement Simulator
+site_description: Simulator for the Belgian training-reimbursement clause (Art. 179 of the law of 31/07/2013)
+site_author: dhondta
+repo_url: https://github.com/dhondta/trainings-reimbursement-simulator
+edit_uri: edit/main/docs/
+docs_dir: docs
+exclude_docs: |
+  requirements.txt
+nav:
+  - Home: index.md
+  - The law of 31/07/2013: pages/law.md
+  - Beyond the law: pages/beyond-the-law.md
+  - Reference:
+      - Input files: pages/input-files.md
+      - Command line: pages/command-line.md
+      - Web dashboard: pages/dashboard.md
+      - Deployment: pages/deployment.md
+      - Development: pages/development.md
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+validation:
+  links:
+    anchors: warn

@@ -11,3 +11,6 @@ sessions/
 # Python
 __pycache__/
 *.pyc
+
+# MkDocs build output
+site/
