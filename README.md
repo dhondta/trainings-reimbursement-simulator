@@ -6,7 +6,7 @@
 [![Build Status](https://github.com/dhondta/trainings-reimbursement-simulator/actions/workflows/project-build.yml/badge.svg)](https://github.com/dhondta/trainings-reimbursement-simulator/actions/workflows/project-build.yml)
 [![Known Vulnerabilities](https://snyk.io/test/github/dhondta/trainings-reimbursement-simulator/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/dhondta/trainings-reimbursement-simulator?targetFile=requirements.txt)
 
-Given a list of trainings, it determines which ones trigger a reimbursement obligation, and simulates the degressive amount an employee would owe if they left the company on a given date. See the [documentation](docs/index.md) for the rules of the law, the options beyond it, and all the details.
+Given a list of trainings, it determines which ones trigger a reimbursement obligation, and simulates the degressive amount an employee would owe if they left the company on a given date. See the [documentation](https://trainings-reimbursement-simulator.readthedocs.io/en/latest/?badge=latest) for the rules of the law, the options beyond it, and all the details.
 
 ## Setup
 
@@ -20,14 +20,14 @@ $ pip install -r requirements.txt
 
 ## Usage
 
-Command line, printing a report for one or more departure dates (see the [course list format](docs/pages/input-files.md#course-list)):
+Command line, printing a report for one or more departure dates (see the [course list format](https://trainings-reimbursement-simulator.readthedocs.io/en/latest/pages/input-files/#course-list)):
 
 ```bash
 python3 src/simulator.py src/example.csv --departure 01/06/2027
 ```
 
 Web dashboard, on <http://127.0.0.1:8050> (`--local` skips sign-in, for single-user use - see
-[Deployment](docs/pages/deployment.md) otherwise):
+[Deployment](https://trainings-reimbursement-simulator.readthedocs.io/en/latest/pages/deployment/) otherwise):
 
 ```bash
 $ cd src
