@@ -54,10 +54,13 @@ All optional - the app works out of the box without any of them (falling back to
 | `GOOGLE_CLIENT_ID` | *(unset)* | OAuth 2.0 client ID for `--auth oauth-google`. |
 | `GOOGLE_CLIENT_SECRET` | *(unset)* | OAuth 2.0 client secret for `--auth oauth-google`. |
 | `GOOGLE_REDIRECT_URI` | *(unset)* | Must exactly match the redirect URI registered in Google Cloud Console, e.g. `https://<host>/auth/google/callback`. |
-| `CAP_YEARS` | `15` | Validity cap of a rendement period, in years. Overridden by `--cap-years`. See [Beyond the law](beyond-the-law.md#other-validity-cap). |
+| `CAP_YEARS` | `15` | Maximum total of cumulated rendement periods, in years. Overridden by `--cap-years`. See [Beyond the law](beyond-the-law.md#other-maximum-total-rendement-period). |
+| `CAP_MODE` | `bunch` | How the maximum total rendement period applies, initially (each visitor can change it with the cap mode selector): `bunch` or `period`. Overridden by `--cap-mode`. See [the law](law.md#maximum-total-rendement-period-5). |
 | `MIN_RENDEMENT_RATE` | *(unset)* | Minimum rendement rate in €/month. Overridden by `--min-rate`. See [Beyond the law](beyond-the-law.md#minimum-rendement-rate). |
 | `MAX_RENDEMENT_RATE` | *(unset)* | Maximum rendement rate in €/month. Overridden by `--max-rate`. See [Beyond the law](beyond-the-law.md#maximum-rendement-rate). |
 | `POSTPONE_REMAINDER` | *(unset)* | Remainder in € below which a period's last month is merged into the previous one. Overridden by `--postpone-remainder`. See [Beyond the law](beyond-the-law.md#postponed-remainder). |
+| `UPDATE_INDEX_VALUES` | *(unset)* | `1`, `true` or `yes` [updates the indexation table](input-files.md#updating-the-table) when the app starts, then on the first day of every month at midnight. Enabled by `--update-index-values`. |
+| `SECURE_COOKIES` | *(enabled)* | `0`, `false` or `no` lets the session cookie be sent over plain HTTP (otherwise HTTPS only, unless `--local`) - not recommended, see [Security](security.md#a02-security-misconfiguration). |
 | `SESSION_SALT` | auto-generated, persisted to `src/.session_salt` | Salt used to hash identities into session keys. |
 | `FLASK_SECRET_KEY` | auto-generated, persisted to `src/.flask_secret` | Signs the session cookie. |
 
@@ -75,8 +78,9 @@ gunicorn --workers 1 --threads 4 --bind 0.0.0.0:8050 wsgi:server
 ```
 
 Keep a single worker: the pending sign-in state of `otp-smtp`, `otp-http` and `oauth-google` (and the PDF export
-cooldown) is held in memory per process, so a request handled by one worker would not see state set by another. Use
-threads for concurrency instead.
+cooldown) is held in memory per process, so a request handled by one worker would not see state set by another, and
+each worker would run its own [monthly update of the indexation table](input-files.md#updating-the-table), only the
+first one to find the new rows applying them without a restart. Use threads for concurrency instead.
 
 As there is no command line there, `--local` and `--auth` are replaced by the `APP_LOCAL_MODE` (`1`, `true` or `yes`)
 and `APP_AUTH_METHOD` environment variables.

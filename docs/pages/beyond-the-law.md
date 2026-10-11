@@ -1,6 +1,6 @@
 # Beyond the law
 
-The simulator offers mechanisms that **Art. 179 of the law of 31/07/2013 does not provide**. They are all **off by
+The simulator offers mechanisms that **Art. 179 of the [law of 28/02/2007](https://www.ejustice.just.fgov.be/cgi_loi/change_lg.pl?language=fr&la=F&table_name=loi&cn=2007022835) does not provide**. They are all **off by
 default**, and serve to assess the effect of possible amendments of the law on concrete course lists before proposing
 them.
 
@@ -9,7 +9,7 @@ them.
 | [Minimum rendement rate](#minimum-rendement-rate) | `--min-rate R` | `MIN_RENDEMENT_RATE` | none: `price / 24` per month |
 | [Maximum rendement rate](#maximum-rendement-rate) | `--max-rate M` | `MAX_RENDEMENT_RATE` | none: `price / 24` per month |
 | [Postponed remainder](#postponed-remainder) | `--postpone-remainder P` | `POSTPONE_REMAINDER` | none |
-| [Other validity cap](#other-validity-cap) | `--cap-years N` | `CAP_YEARS` | 15 years (§5) |
+| [Other maximum total rendement period](#other-maximum-total-rendement-period) | `--cap-years N` | `CAP_YEARS` | 15 years (§5) |
 
 The options are the same for [`simulator.py`](command-line.md) and [`dash_app.py`](dashboard.md); the environment
 variables apply to the web dashboard only (e.g. when served through `wsgi.py`), the command-line options taking
@@ -23,7 +23,7 @@ in the month being served (see [Indexation table](input-files.md#indexation-tabl
 ## Minimum rendement rate
 
 **Issue addressed** - As of the law, every triggering course is paid off over 24 months, whatever its price. A cheap
-triggering course thus ties the employee down for two full years at a low monthly rate.
+triggering course thus ties the military member down for two full years at a low monthly rate.
 
 **Mechanism** - Each month served pays off at least `R × index`:
 
@@ -60,7 +60,7 @@ python3 src/simulator.py my-courses.csv --min-rate 250 --max-rate 500
 ## Postponed remainder
 
 **Issue addressed** - With a minimum or maximum rate, the last month of a rendement period only settles what remains of
-the price, which may be a small amount keeping the employee bound for a whole extra month.
+the price, which may be a small amount keeping the military member bound for a whole extra month.
 
 **Mechanism** - When the last month of a period would pay off less than `P × index`, that remainder is merged into the
 previous month served, which then pays off its rate plus the remainder (possibly above `M × index`). The period thus
@@ -70,13 +70,13 @@ ends one month earlier, even when a more recent period was served in between.
 python3 src/simulator.py my-courses.csv --min-rate 250 --postpone-remainder 100
 ```
 
-## Other validity cap
+## Other maximum total rendement period
 
-**Issue addressed** - §5 sets the validity of a rendement period's clause to 15 years from its start; another duration
-can be simulated, e.g. to assess a shorter one.
+**Issue addressed** - §5 limits the total of cumulated rendement periods to 15 years (see
+[the law](law.md#maximum-total-rendement-period-5)); another duration can be simulated, e.g. to assess a shorter one.
 
-**Mechanism** - The clause of a rendement period stops producing any effect after `N` years instead of 15, the
-remaining balance being forgiven.
+**Mechanism** - The cumulated rendement periods are limited to `N` years of rendement instead of 15, as of the
+`--cap-mode` in use (see [the law](law.md#maximum-total-rendement-period-5)), the excess being forgiven.
 
 ```bash
 python3 src/simulator.py my-courses.csv --cap-years 10
@@ -92,9 +92,9 @@ Running the same course list with and without an option shows its effect. For in
 | As of the law | *(none)* | 11,267.12 € |
 | Minimum rate of 250 €/month | `--min-rate 250` | 8,685.44 € |
 | Maximum rate of 150 €/month | `--max-rate 150` | 12,505.82 € |
-| Validity cap of 1 year | `--cap-years 1` | 0.00 € |
+| Maximum total rendement period of 1 year | `--cap-years 1` | 0.00 € |
 
-Whatever the departure date, a minimum rate, a postponed remainder or a shorter validity cap never increase the amount
+Whatever the departure date, a minimum rate, a postponed remainder or a shorter maximum total rendement period never increase the amount
 owed, while a maximum rate never decreases it. The [continuous integration](development.md#continuous-integration)
 checks these properties on every change.
 

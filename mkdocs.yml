@@ -1,5 +1,6 @@
 site_name: Training Reimbursement Simulator
-site_description: Simulator for the Belgian training-reimbursement clause (Art. 179 of the law of 31/07/2013)
+site_description: Simulator for the rendement periods and the reimbursement of training costs of Belgian military
+  personnel (Art. 179 of the law of 28/02/2007, as replaced by the law of 31/07/2013)
 site_author: dhondta
 repo_url: https://github.com/dhondta/trainings-reimbursement-simulator
 edit_uri: edit/main/docs/
@@ -8,13 +9,15 @@ exclude_docs: |
   requirements.txt
 nav:
   - Home: index.md
-  - The law of 31/07/2013: pages/law.md
+  - The law (Art. 179): pages/law.md
   - Beyond the law: pages/beyond-the-law.md
+  - Legal basis: pages/legal-basis.md
   - Reference:
       - Input files: pages/input-files.md
       - Command line: pages/command-line.md
       - Web dashboard: pages/dashboard.md
       - Deployment: pages/deployment.md
+      - Security: pages/security.md
       - Development: pages/development.md
 theme:
   name: material

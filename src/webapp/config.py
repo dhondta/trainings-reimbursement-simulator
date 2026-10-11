@@ -15,7 +15,8 @@ from pathlib import Path
 
 import dash_bootstrap_components as dbc
 
-from simulator import CAP_YEARS as LAW_CAP_YEARS, add_months, load_courses, parse_decimal
+from simulator import CAP_MODE as DEFAULT_CAP_MODE, CAP_MODES, CAP_YEARS as LAW_CAP_YEARS, add_months, load_courses, \
+                      parse_decimal
 
 HERE = Path(__file__).parent.parent  # repo root: webapp/ lives one level below it
 
@@ -29,8 +30,10 @@ def _persisted_secret(env_var: str, filename: str) -> str:
         return value
     path = HERE / filename
     if path.exists():
+        path.chmod(0o600)  # Readable by the app's own user only.
         return path.read_text().strip()
     value = secrets.token_hex(32)
+    path.touch(mode=0o600)
     path.write_text(value)
     return value
 
@@ -59,15 +62,48 @@ def _parse_auth_users(raw: str) -> dict[str, str]:
     return users
 
 
-# Validity cap of a rendement period in years (art. 179, §5; --cap-years CLI flag): 15 years as of the law.
+# Maximum total of cumulated rendement periods in years (art. 179, §5; --cap-years CLI flag): 15 years as of the law.
 CAP_YEARS = int(os.environ.get("CAP_YEARS") or LAW_CAP_YEARS)
 if CAP_YEARS <= 0:
     raise ValueError("CAP_YEARS must be strictly positive")
-COURSE_COLUMNS = ("Course", "Price", "End Date", "Bundle")  # CSV headers, for both import and export (Bundle optional)
+# How the maximum total rendement period applies initially (--cap-mode CLI flag; each visitor can change it): per bunch
+#  of cumulated periods (default) or per rendement period - the two readings of art. 179, §5 (see simulator.CAP_MODES).
+CAP_MODE = os.environ.get("CAP_MODE") or DEFAULT_CAP_MODE
+if CAP_MODE not in CAP_MODES:
+    raise ValueError(f"CAP_MODE must be one of: {', '.join(CAP_MODES)}")
+COURSE_COLUMNS = ("Course", "Price", "End Date", "Bundle", "Start Date")  # CSV headers, for both import and export
+#  (Bundle and Start Date optional - a row with a Start Date is a period of non-activity, see simulator.Inactivity)
 DEFAULT_LANG = "en"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-EMPTY_ROW = {"Course": "", "Price": "", "End Date": "", "Bundle": ""}
+EMPTY_ROW = {"Course": "", "Price": "", "End Date": "", "Bundle": "", "Start Date": ""}
 FALLBACK_SLIDER_MONTHS = 60  # used when there is no valid period to size the range on
+# Official references of the laws mentioned in the texts (see law_segments): their Justel number (the consolidated
+#  legislation database of the Belgian Official Journal) per date, in the language of the text (French for English,
+#  which Justel does not offer).
+LAW_REFERENCES = {"28/02/2007": "2007022835", "31/07/2013": "2013073104"}
+LAW_MENTION_RE = re.compile(r"(?:loi du|wet van|law of) (\d{2}/\d{2}/\d{4})")
+
+
+def justel_url(number: str, lang: str) -> str:
+    """ The consolidated text of a law on Justel, in Dutch for "nl", in French otherwise. """
+    language, la, table = ("nl", "N", "wet") if lang == "nl" else ("fr", "F", "loi")
+    return f"https://www.ejustice.just.fgov.be/cgi_loi/change_lg.pl?language={language}&la={la}&table_name={table}" \
+           f"&cn={number}"
+
+
+def law_segments(text: str, lang: str) -> list[tuple[str, str | None]]:
+    """ Splits text into (segment, url) pairs, url being the official reference of a law mentioned in it (see
+     LAW_REFERENCES) and None elsewhere - to render the mentions of laws as hyperlinks. """
+    segments, last = [], 0
+    for match in LAW_MENTION_RE.finditer(text):
+        if (number := LAW_REFERENCES.get(match.group(1))) is None:
+            continue
+        segments += [(text[last:match.start()], None), (match.group(0), justel_url(number, lang))]
+        last = match.end()
+    segments.append((text[last:], None))
+    return [(segment, url) for segment, url in segments if segment]
+
+
 LANGUAGE_OPTIONS = [{"label": "EN", "value": "en"}, {"label": "FR", "value": "fr"}, {"label": "NL", "value": "nl"}]
 # When True (set via the --local CLI flag), the sign-in/OTP flow is skipped entirely and every visitor shares a single
 #  "local" session folder - meant for running the app on a single person's own machine, not for a multi-user deployment.
@@ -77,6 +113,9 @@ LOCAL_MODE = False
 #  "password" and "basic" check a username/password from AUTH_USERS (a Dash login form vs. a shared HTTP Basic
 #  prompt); "oauth-google" delegates to Google sign-in. See auth.render_login_view and auth.signed_in_identity.
 AUTH_METHOD = "otp-smtp"
+# Whether the indexation table is updated when the app starts, then on the first day of every month at midnight while it
+#  runs (see scheduler.py; --update-index-values CLI flag, or the UPDATE_INDEX_VALUES env var set to 1, true or yes).
+UPDATE_INDEX_VALUES = os.environ.get("UPDATE_INDEX_VALUES", "").lower() in ("1", "true", "yes")
 # Username/password pairs for --auth password and --auth basic (see _parse_auth_users above).
 AUTH_USERS = _parse_auth_users(os.environ.get("AUTH_USERS", ""))
 # Signs the Flask session cookie: auto-generated once and persisted to a local dotfile unless overridden via the
@@ -117,6 +156,11 @@ PDF_EXPORT_COOLDOWN = timedelta(minutes=1)
 LAST_PDF_EXPORTS: dict[str, datetime] = {}  # session key -> time of that user's last PDF export
 MS_PER_DAY = 24 * 60 * 60 * 1000
 OAUTH_STATE_TTL = timedelta(minutes=10)
+# Failed sign-ins tolerated per username (--auth password and --auth basic) within LOGIN_LOCKOUT, before any further
+#  attempt for that username is refused until the oldest failure is that old - tracked in memory per process.
+LOGIN_MAX_FAILURES = 5
+LOGIN_LOCKOUT = timedelta(minutes=15)
+FAILED_LOGINS: dict[str, list[datetime]] = {}  # username -> times of its recent failed sign-ins
 OTP_LENGTH = 8
 OTP_MAX_ATTEMPTS = 5
 OTP_RESEND_COOLDOWN = timedelta(seconds=30)
@@ -126,6 +170,10 @@ PENDING_OAUTH_STATES: dict[str, datetime] = {}  # CSRF state token -> expiry, fo
 # SHA256 salt for session keys: auto-generated once and persisted to a local dotfile unless overridden via the
 #  environment, so returning users keep landing in the same folder across app restarts.
 SESSION_SALT = _persisted_secret("SESSION_SALT", ".session_salt")
+# Whether the session cookie is only sent over HTTPS (the app being served behind TLS), unless in LOCAL_MODE, where the
+#  app is served over plain HTTP on 127.0.0.1. Set the SECURE_COOKIES env var to 0, false or no to serve sign-in over
+#  plain HTTP (not recommended).
+SECURE_COOKIES = os.environ.get("SECURE_COOKIES", "").lower() not in ("0", "false", "no")
 # SendGrid's HTTP API, used instead of SMTP when --auth otp-http is selected (see auth.send_otp_email_http): reached
 #  over HTTPS, which stays usable on hosts that block outbound SMTP ports. Falls back to console logging, same as the
 #  SMTP path, if unset. The "From" address (SMTP_FROM, below) is shared between both transports.
@@ -150,12 +198,17 @@ SESSIONS_ROOT.mkdir(exist_ok=True)
 #  and THEME_FONT in sync with it for the charts), plus Bootstrap Icons. Both are served from a CDN.
 THEME = dbc.themes.FLATLY
 THEME_COLORS = {'primary': "#2C3E50", 'secondary': "#95A5A6", 'success': "#18BC9C", 'info': "#3498DB",
-                'danger': "#E74C3C", 'body': "#212529", 'border': "#DEE2E6", 'light': "#F8F9FA"}
+                'warning': "#F39C12", 'danger': "#E74C3C", 'body': "#212529", 'border': "#DEE2E6", 'light': "#F8F9FA"}
 THEME_FONT = "Lato, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
 ICONS = dbc.icons.BOOTSTRAP
 SLIDER_START = add_months(date(date.today().year, date.today().month, 1), 1)
-# Shared by both charts: rendement periods (served / suspended / remaining) and amounts per course (served, i.e. fully
-#  paid off / remaining / expired, i.e. forgiven by the validity cap).
+# Shared by both charts: rendement periods (served / suspended / inactive / remaining / expired) and amounts per course
+#  (served, i.e. fully paid off / remaining / expired, i.e. forgiven under the maximum total rendement period). The
+#  forgiven parts are a lighter grey than the suspended months, to tell them apart on the rendement periods' chart.
 STATUS_COLORS = {'served': THEME_COLORS["success"], 'suspended': THEME_COLORS["secondary"],
-                 'remaining': THEME_COLORS["danger"], 'expired': THEME_COLORS["secondary"]}
+                 'inactive': THEME_COLORS["warning"], 'remaining': THEME_COLORS["danger"], 'expired': "#D5DBDB",
+                 'lapsed': THEME_COLORS["secondary"]}
+# Months a period would still have been suspended once forgiven ('lapsed', see helpers.with_forgiven_runs): hatched
+#  with the 'lapsed' color over this background, to tell them from the months it is really suspended.
+HATCH_BACKGROUND = "#EEF1F1"
 

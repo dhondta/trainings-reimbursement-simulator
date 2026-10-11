@@ -24,8 +24,9 @@ from simulator import active_rendement, build_period_status_timeline, calculate_
                       determine_triggering_courses, money
 
 from . import config
-from .helpers import detail_status, explanation_items, final_rendement_completion_day, rendement_periods, \
-                     rows_to_courses, split_at_departure, timeline_horizon
+from .helpers import cut_off_runs, detail_status, explanation_items, final_rendement_completion_day, \
+                     inactivity_runs, rendement_periods, rows_to_courses, split_at_departure, timeline_horizon, \
+                     with_forgiven_runs
 from .strings import STRINGS
 
 FONT, FONT_BOLD = "Helvetica", "Helvetica-Bold"
@@ -34,6 +35,7 @@ PAGE_WIDTH, PAGE_HEIGHT = A4
 CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 COLORS = {name: colors.HexColor(value) for name, value in config.THEME_COLORS.items()}
 STATUS_COLORS = {name: colors.HexColor(value) for name, value in config.STATUS_COLORS.items()}
+LAPSED = STATUS_COLORS["lapsed"]  # Drawn hatched (see _hatched).
 
 
 def _styles() -> dict[str, ParagraphStyle]:
@@ -98,13 +100,29 @@ def _thousands(value: float, t: dict) -> str:
 
 
 def _legend(drawing: Drawing, right: float, y: float, items: list[tuple[str, colors.Color]]) -> None:
-    """ A one-line legend (colored square + label per item), right-aligned on `right`. """
+    """ A one-line legend (colored square + label per item, hatched for "lapsed"), right-aligned on `right`. """
     widths = [10 + stringWidth(label, FONT, 7) + 10 for label, _color in items]
     x = right - sum(widths)
     for (label, color), w in zip(items, widths):
-        drawing.add(Rect(x, y, 7, 7, fillColor=color, strokeColor=None))
+        if color is LAPSED:
+            _hatched(drawing, x, y, 7, 7)
+        else:
+            drawing.add(Rect(x, y, 7, 7, fillColor=color, strokeColor=None))
         drawing.add(String(x + 10, y + 1, label, fontName=FONT, fontSize=7, fillColor=COLORS["body"]))
         x += w
+
+
+def _hatched(drawing: Drawing, x: float, y: float, width: float, height: float, step: float = 3) -> None:
+    """ A rectangle hatched with diagonal lines, for the months a period would still have been suspended once
+     forgiven ("lapsed" - see helpers.with_forgiven_runs). """
+    drawing.add(Rect(x, y, width, height, fillColor=colors.HexColor(config.HATCH_BACKGROUND), strokeColor=None))
+    k = -height
+    while k < width:
+        # The line (x + k + s, y + s), for s in [0, height], within the rectangle's width.
+        s0, s1 = max(0.0, -k), min(height, width - k)
+        if s0 < s1:
+            drawing.add(Line(x + k + s0, y + s0, x + k + s1, y + s1, strokeColor=LAPSED, strokeWidth=0.6))
+        k += step
 
 
 def _nice_step(span: float, n_ticks: int = 5) -> float:
@@ -151,8 +169,9 @@ def _bar_chart(t: dict, details: list[dict], width: float) -> Drawing:
             bar_w = min(slot * 0.6, 40)
             drawing.add(Rect(center - bar_w / 2, bottom, bar_w, y_at(amount) - bottom, fillColor=color,
                              strokeColor=None))
+        # The label of a forgiven amount is in the darker grey, the lighter one of its bar being hard to read as text.
         drawing.add(String(center, y_at(amount) + 3, text, fontName=FONT, fontSize=label_size, textAnchor="middle",
-                           fillColor=color))
+                           fillColor=COLORS["secondary"] if status == "expired" else color))
         if rotate:
             text = String(0, 0, code, fontName=FONT, fontSize=7, textAnchor="end", fillColor=COLORS["body"])
             drawing.add(Group(text, transform=(0.71, 0.71, -0.71, 0.71, center + 2, bottom - 4)))
@@ -165,17 +184,19 @@ def _bar_chart(t: dict, details: list[dict], width: float) -> Drawing:
     return drawing
 
 
-def _timeline_chart(t: dict, details: list[dict], runs_by_course: dict[str, list[dict]], departure_date: date,
-                    width: float) -> Drawing:
-    """ The rendement periods' served / suspended / remaining runs as a Gantt chart (oldest course on top), with the
-     departure date as a dashed line and a gridline on every January. """
+def _timeline_chart(t: dict, details: list[dict], runs_by_course: dict[str, list[dict]],
+                    inactivity_rows: dict[str, list[dict]], departure_date: date, width: float) -> Drawing:
+    """ The rendement periods' served / suspended / inactive / remaining runs as a Gantt chart (oldest on top), followed
+     by the rows of the periods of non-activity (see inactivity_runs), with the departure date as a dashed line and a
+     gridline on every January. """
     row_h, top, bottom = 14, 22, 18
-    codes = [d["course"] for d in details]
+    rows = [(d["course"], runs_by_course.get(d["course"], [])) for d in details] + list(inactivity_rows.items())
+    codes = [code for code, _runs in rows]
     left = max(stringWidth(code, FONT, 7) for code in codes) + 8
     plot_w, plot_h = width - left - 10, row_h * len(codes)
     height = top + plot_h + bottom
     drawing = Drawing(width, height)
-    runs = [run for code in codes for run in runs_by_course.get(code, [])]
+    runs = [run for _code, row_runs in rows for run in row_runs]
     x0 = min([run["start"] for run in runs] + [departure_date]).toordinal()
     x1 = max([run["end"] for run in runs] + [departure_date]).toordinal()
     def x_at(d: date) -> float:
@@ -188,11 +209,14 @@ def _timeline_chart(t: dict, details: list[dict], runs_by_course: dict[str, list
         if (year - first_year - 1) % year_step == 0:
             drawing.add(String(x, bottom - 10, str(year), fontName=FONT, fontSize=7, textAnchor="middle",
                                fillColor=COLORS["body"]))
-    for i, code in enumerate(codes):
+    for i, (code, row_runs) in enumerate(rows):
         y = bottom + plot_h - (i + 1) * row_h
         drawing.add(String(left - 4, y + row_h / 2 - 2.5, code, fontName=FONT, fontSize=7, textAnchor="end",
                            fillColor=COLORS["body"]))
-        for run in runs_by_course.get(code, []):
+        for run in row_runs:
+            if run["status"] == "lapsed":
+                _hatched(drawing, x_at(run["start"]), y + 2, x_at(run["end"]) - x_at(run["start"]), row_h - 4)
+                continue
             drawing.add(Rect(x_at(run["start"]), y + 2, x_at(run["end"]) - x_at(run["start"]), row_h - 4,
                              fillColor=STATUS_COLORS[run["status"]], strokeColor=None))
     drawing.add(Line(left, bottom, left + plot_w, bottom, strokeColor=COLORS["body"], strokeWidth=0.6))
@@ -201,8 +225,11 @@ def _timeline_chart(t: dict, details: list[dict], runs_by_course: dict[str, list
                      strokeDashArray=[3, 2]))
     drawing.add(String(x, bottom + plot_h + 6, t["departure_marker"], fontName=FONT, fontSize=7, textAnchor="middle",
                        fillColor=colors.black))
+    inactive = ("inactive",) if any(run["status"] == "inactive" for run in runs) else ()
+    shown = {run["status"] for run in runs}
+    forgiven = tuple(s for s in ("lapsed", "expired") if s in shown)
     _legend(drawing, left + plot_w, height - 8,
-            [(t[s], STATUS_COLORS[s]) for s in ("served", "suspended", "remaining")])
+            [(t[s], STATUS_COLORS[s]) for s in ("served", "suspended", *inactive, "remaining", *forgiven)])
     return drawing
 
 
@@ -223,11 +250,15 @@ def _summary_cards(cards: list[tuple[str, str, list[str]]], styles: dict) -> Tab
     return table
 
 
-def build_report(rows: list[dict], departure_date: date, lang: str, source: str | None = None) -> bytes:
-    """ The PDF report (as bytes) of the course-table rows' simulation for a departure on departure_date. """
+def build_report(rows: list[dict], departure_date: date, lang: str, source: str | None = None,
+                 full_schedule: bool = False, cap_mode: str | None = None) -> bytes:
+    """ The PDF report (as bytes) of the course-table rows' simulation for a departure on departure_date, with the
+     rendement periods' chart as with the dashboard's switch: as they are, or as they would have been without the
+     maximum total rendement period (full_schedule), and with the maximum applying as of cap_mode (as chosen in the
+     dashboard, the app-wide one by default). """
     t, styles = STRINGS[lang], _styles()
     departure_str, fmt = departure_date.strftime("%d/%m/%Y"), (lambda d: d.strftime("%d/%m/%Y"))
-    courses, errors = rows_to_courses(rows, lang=lang)
+    courses, inactivity, errors = rows_to_courses(rows, lang=lang)
     story = [
         Paragraph(escape(t["report_title"]), styles["title"]),
         Paragraph(escape(t["report_subtitle"].format(date=departure_str, today=fmt(date.today()))),
@@ -240,9 +271,9 @@ def build_report(rows: list[dict], departure_date: date, lang: str, source: str 
                   *(Paragraph(escape(error), styles["error"]) for error in errors)]
     if not courses:
         story += [Spacer(1, 12), Paragraph(escape(t["no_valid_courses"]), styles["muted"])]
-        return _render(story, t)
+        return _render(story, t, lang)
     triggering_courses, audit = determine_triggering_courses(courses)
-    periods = rendement_periods(triggering_courses)
+    periods = rendement_periods(triggering_courses, inactivity, cap_mode)
     # Summary (as the dashboard's metric cards), then the plan's details.
     story.append(Paragraph(escape(t["report_summary"]), styles["h2"]))
     if not periods:
@@ -283,7 +314,7 @@ def build_report(rows: list[dict], departure_date: date, lang: str, source: str 
     ]
     if not periods:
         story += [Spacer(1, 8), Paragraph(escape(t["final_date_none"]), styles["muted"])]
-        return _render(story, t)
+        return _render(story, t, lang)
     # Reimbursement per course at the departure date, with its total.
     detail_rows = []
     for d in details:
@@ -300,34 +331,51 @@ def build_report(rows: list[dict], departure_date: date, lang: str, source: str 
                     numeric_cols=(2, 3, 4, 5, 6), total_row=True),
     ]
     # Charts: the full suspension pyramid, recolored at the departure date (see update_charts).
-    timeline_by_course = build_period_status_timeline(periods, timeline_horizon(periods))
-    display_runs = {code: split_at_departure(runs, departure_date) for code, runs in timeline_by_course.items()}
+    horizon = timeline_horizon(periods)
+    timeline_by_course = build_period_status_timeline(periods, horizon)
+    shown_timeline = (with_forgiven_runs if full_schedule else cut_off_runs)(periods, timeline_by_course)
+    display_runs = {code: split_at_departure(runs, departure_date) for code, runs in shown_timeline.items()}
     story += [
         KeepTogether([Paragraph(escape(t["bar_title"].format(date=departure_date.strftime("%d/%m/%y"))),
                                 styles["h2"]), _bar_chart(t, details, CONTENT_WIDTH)]),
         KeepTogether([Paragraph(escape(t["timeline_title"]), styles["h2"]),
-                      _timeline_chart(t, details, display_runs, departure_date, CONTENT_WIDTH)]),
+                      _timeline_chart(t, details, display_runs, inactivity_runs(inactivity), departure_date,
+                                      CONTENT_WIDTH)]),
     ]
     # How the law's criteria apply, then the criteria themselves.
-    explanation = explanation_items(t, courses, triggering_courses, details, timeline_by_course, departure_date, total)
+    explanation = explanation_items(t, courses, triggering_courses, details, timeline_by_course, departure_date, total,
+                                    inactivity, cap_mode, periods)
     story += [
         KeepTogether([Paragraph(escape(t["report_explanation"]), styles["h2"]),
                       ListFlowable([ListItem(Paragraph(escape(item), styles["body"])) for item in explanation],
                                    bulletType="1", bulletFormat="%s.", bulletFontName=FONT,
                                    bulletFontSize=9)]),
-        KeepTogether([Paragraph(escape(t["report_rules"]), styles["h2"]),
+        KeepTogether([Paragraph(_linked(t["report_rules"], lang), styles["h2"]),
                       ListFlowable([ListItem(Paragraph(escape(item), styles["body"]), bulletColor=COLORS["body"])
                                     for item in t["law_criteria"]], bulletType="bullet", start="•")]),
     ]
-    return _render(story, t)
+    return _render(story, t, lang)
 
 
-def _render(story: list, t: dict) -> bytes:
+def _linked(text: str, lang: str) -> str:
+    """ text as Paragraph markup, with the mentions of laws as hyperlinks to their official reference. """
+    return "".join(f'<a href="{escape(url)}" color="{config.THEME_COLORS["info"]}">{escape(segment)}</a>' if url
+                   else escape(segment) for segment, url in config.law_segments(text, lang))
+
+
+def _render(story: list, t: dict, lang: str) -> bytes:
     def footer(canvas, doc):
         canvas.saveState()
         canvas.setFont(FONT, 7)
         canvas.setFillColor(COLORS["secondary"])
-        canvas.drawString(MARGIN, MARGIN / 2, t["app_title"])
+        # The footer is drawn piece by piece, so that the mentions of laws can be made clickable.
+        x, y = MARGIN, MARGIN / 2
+        for segment, url in config.law_segments(f"{t['app_title']} - {t['app_subtitle']}", lang):
+            canvas.drawString(x, y, segment)
+            width = stringWidth(segment, FONT, 7)
+            if url:
+                canvas.linkURL(url, (x, y - 2, x + width, y + 7), relative=1)
+            x += width
         canvas.drawRightString(PAGE_WIDTH - MARGIN, MARGIN / 2, t["report_page"].format(n=doc.page))
         canvas.restoreState()
     buffer = io.BytesIO()

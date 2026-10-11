@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -13,15 +13,16 @@ import dash
 import plotly.graph_objects as go
 from dash import Input, Output, State, dcc, html, no_update
 
-from simulator import active_rendement, build_period_status_timeline, calculate_reimbursement, \
+from simulator import CAP_MODES, active_rendement, build_period_status_timeline, calculate_reimbursement, \
                       determine_triggering_courses, load_courses, money
 
 from . import config
 from .auth import session_dir, session_key
-from .helpers import date_at, detail_status, explanation_items, final_rendement_completion_day, icon_label, \
-                     info_card, load_preset_rows, normalize_rows, presets_for_session, rendement_periods, \
-                     rows_to_courses, rows_to_csv, slider_marks, slider_max_months, slider_min_months, \
-                     sort_rows_by_date, split_at_departure, timeline_horizon, value_card
+from .helpers import cut_off_runs, date_at, detail_status, explanation_items, final_rendement_completion_day, \
+                     icon_label, inactivity_runs, info_card, law_links, load_preset_rows, normalize_rows, \
+                     presets_for_session, rendement_periods, rows_to_courses, rows_to_csv, slider_marks, \
+                     slider_max_months, slider_min_months, sort_rows_by_date, split_at_departure, timeline_horizon, \
+                     value_card, with_forgiven_runs
 from .instance import app
 from .report import build_report
 from .strings import STRINGS
@@ -88,8 +89,9 @@ def export_csv(_n_clicks, rows, preset_name):
 
 @app.callback(Output("pdf-download", "data"), Output("export-error", "children"), Input("export-pdf-btn", "n_clicks"),
               State("courses-table", "data"), State("departure-slider", "value"), State("lang-selector", "value"),
-              State("preset-dropdown", "value"), prevent_initial_call=True)
-def export_pdf(_n_clicks, rows, slider_value, lang, preset_name):
+              State("preset-dropdown", "value"), State("full-schedule-switch", "value"),
+              State("cap-mode-select", "value"), prevent_initial_call=True)
+def export_pdf(_n_clicks, rows, slider_value, lang, preset_name, full_schedule=False, cap_mode=None):
     # Rate limited per user (anonymous visitors, e.g. in LOCAL_MODE, share a single slot), as generating a report is
     #  the most expensive thing the app does.
     key, now = session_key() or "anonymous", datetime.now()
@@ -100,7 +102,8 @@ def export_pdf(_n_clicks, rows, slider_value, lang, preset_name):
         config.LAST_PDF_EXPORTS[key] = now
     # The report covers the simulation as currently displayed: same courses, departure date and language.
     stem = Path(preset_name).stem if preset_name else "courses"
-    pdf = build_report(rows or [], date_at(slider_value), lang, source=preset_name)
+    pdf = build_report(rows or [], date_at(slider_value), lang, source=preset_name, full_schedule=bool(full_schedule),
+                       cap_mode=cap_mode)
     return dcc.send_bytes(pdf, f"{stem}-report.pdf"), ""
 
 
@@ -120,16 +123,26 @@ def show_departure_date(slider_value):
     return date_at(slider_value).strftime("%d/%m/%y")
 
 
+def _pattern(status: str) -> dict:
+    """ The hatching of the months a period would still have been suspended once forgiven ("lapsed"), none
+     otherwise. """
+    if status != "lapsed":
+        return {}
+    return {"shape": "/", "fgcolor": config.STATUS_COLORS["lapsed"], "bgcolor": config.HATCH_BACKGROUND, "size": 6,
+            "solidity": 0.3}
+
+
 @app.callback(Output("courses-error", "children"), Output("rendement-period-card", "children"),
               Output("total-reimbursement-card", "children"), Output("reimbursement-bar", "figure"),
               Output("rendement-timeline", "figure"), Output("rendement-rate-card", "children"),
               Output("law-application", "children"), Input("courses-table", "data"),
-              Input("departure-slider", "value"), Input("lang-selector", "value"))
-def update_charts(rows, slider_value, lang):
+              Input("departure-slider", "value"), Input("lang-selector", "value"),
+              Input("full-schedule-switch", "value"), Input("cap-mode-select", "value"))
+def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
     t = STRINGS[lang]
     departure_date = date_at(slider_value)
     departure_str = departure_date.strftime("%d/%m/%y")
-    courses, errors = rows_to_courses(rows or [], lang=lang)
+    courses, inactivity, errors = rows_to_courses(rows or [], lang=lang)
     error_text = "\n".join(errors)
     empty_bar = go.Figure()
     empty_bar.update_layout(title=t["bar_title_default"])
@@ -148,7 +161,7 @@ def update_charts(rows, slider_value, lang):
             html.Div(t["no_valid_courses"], className="text-muted"),
         )
     triggering_courses, _audit = determine_triggering_courses(courses)
-    periods = rendement_periods(triggering_courses)
+    periods = rendement_periods(triggering_courses, inactivity, cap_mode)
     if not periods:
         empty_bar.update_layout(title=t["bar_title_none"])
         return (
@@ -185,7 +198,9 @@ def update_charts(rows, slider_value, lang):
                 # Labels rounded to the euro so that neighbouring ones don't overlap; the hover shows the exact amount.
                 text=[f"{a:,.0f} €" if status else "–" for a, status in zip(amounts, statuses)],
                 textposition="outside",
-                textfont={"color": colors},
+                # The label of a forgiven amount is in the darker grey, its bar's lighter one being hard to read.
+                textfont={"color": [config.THEME_COLORS["secondary"] if status == "expired" else color
+                                    for status, color in zip(statuses, colors)]},
                 marker_color=colors,
                 customdata=[t[status] if status else "-" for status in statuses],
                 hovertemplate="%{x} - %{customdata}<br>%{y:,.2f} €<extra></extra>",
@@ -216,22 +231,28 @@ def update_charts(rows, slider_value, lang):
     timeline_fig = go.Figure()
     horizon = timeline_horizon(periods)
     timeline_by_course = build_period_status_timeline(periods, horizon)
-    display_timeline_by_course = {code: split_at_departure(runs, departure_date) \
-                                  for code, runs in timeline_by_course.items()}
-    for d in details:
-        for run in display_timeline_by_course.get(d["course"], []):
+    shown_timeline = (with_forgiven_runs if full_schedule else cut_off_runs)(periods, timeline_by_course)
+    display_timeline_by_course = {code: split_at_departure(runs, departure_date) for code, runs in
+                                  shown_timeline.items()}
+    # Rows of rendement periods (oldest at the bottom), then one row per period of non-activity (art. 179, §6), with its
+    #  exact dates - the end date included, hence the run ending the day after.
+    rows_of_runs = [(d["course"], display_timeline_by_course.get(d["course"], []), timedelta(0)) for d in details]
+    rows_of_runs += [(label, runs, timedelta(days=1)) for label, runs in inactivity_runs(inactivity).items()]
+    for row, runs, end_shift in rows_of_runs:
+        for run in runs:
             status = run["status"]
-            status_label = t[status].lower()
+            status_label = t[status].lower() + (f" ({run['amount']:.2f} €)" if "amount" in run else "")
             timeline_fig.add_trace(
                 go.Bar(
-                    y=[d["course"]],
+                    y=[row],
                     x=[(run["end"] - run["start"]).days * config.MS_PER_DAY],
                     base=[run["start"].isoformat()],
                     orientation="h",
                     name=t[status],
                     marker_color=config.STATUS_COLORS[status],
+                    marker_pattern=_pattern(status),
                     showlegend=False,
-                    customdata=[[run["start"].strftime("%d/%m/%y"), run["end"].strftime("%d/%m/%y")]],
+                    customdata=[[run["start"].strftime("%d/%m/%y"), (run["end"] - end_shift).strftime("%d/%m/%y")]],
                     hovertemplate=(
                         f"%{{y}} - {status_label}<br>"
                         "%{customdata[0]} → %{customdata[1]}<extra></extra>"
@@ -267,8 +288,11 @@ def update_charts(rows, slider_value, lang):
     # Legend proxies (since individual bar traces have showlegend=False). Always shown, even if a status has no bar this
     #  run (e.g. no "remaining" left once the departure date is past the final rendement end date), so the legend stays
     #  stable across the slider.
-    for status in ("served", "suspended", "remaining"):
-        timeline_fig.add_trace(go.Bar(y=[None], x=[None], marker_color=config.STATUS_COLORS[status], name=t[status]))
+    shown = {run["status"] for runs in display_timeline_by_course.values() for run in runs}
+    for status in ("served", "suspended", *(("inactive",) if inactivity else ()), "remaining",
+                   *(s for s in ("lapsed", "expired") if s in shown)):
+        timeline_fig.add_trace(go.Bar(y=[None], x=[None], marker_color=config.STATUS_COLORS[status],
+                                      marker_pattern=_pattern(status), name=t[status]))
     total_card = value_card(t["total_label"].format(date=departure_str), f"{total:.2f} €")
     # Rendement period: from the start of the first rendement period to the last day of the final one (following the
     #  full suspension pyramid), on a single line - hence a slightly smaller font, sized to fit the metric cards' column
@@ -299,7 +323,8 @@ def update_charts(rows, slider_value, lang):
     # --------------------------------------------------------
     # Dynamic explanation: how the four criteria listed under the title concretely apply to this simulation, with
     #  the actual numbers behind this departure date.
-    explanation = explanation_items(t, courses, triggering_courses, details, timeline_by_course, departure_date, total)
+    explanation = explanation_items(t, courses, triggering_courses, details, timeline_by_course, departure_date, total,
+                                    inactivity, cap_mode, periods)
     law_application = html.Div([
         html.Div(t["explanation_title"], className="fw-bold mb-2"),
         html.Ol([html.Li(item) for item in explanation], className="small text-muted mb-0"),
@@ -309,22 +334,24 @@ def update_charts(rows, slider_value, lang):
 
 @app.callback(Output("departure-slider", "min"), Output("departure-slider", "max"),
               Output("departure-slider", "marks"), Output("departure-slider", "value"),
-              Input("courses-table", "data"), State("departure-slider", "value"))
-def update_slider_range(rows, current_value):
-    courses, _errors = rows_to_courses(rows or [])
+              Input("courses-table", "data"), Input("cap-mode-select", "value"), State("departure-slider", "value"))
+def update_slider_range(rows, cap_mode, current_value):
+    courses, inactivity, _errors = rows_to_courses(rows or [])
     triggering_courses, _audit = determine_triggering_courses(courses)
-    periods = rendement_periods(triggering_courses)
+    periods = rendement_periods(triggering_courses, inactivity, cap_mode)
     min_months, max_months = slider_min_months(periods), slider_max_months(periods)
     value = max(min_months, min(current_value or 0, max_months))
     return min_months, max_months, slider_marks(min_months, max_months), value
 
 
-@app.callback(Output("language-label", "children"), Output("app-title", "children"), Output("law-summary", "children"),
+@app.callback(Output("language-label", "children"), Output("app-title", "children"),
+              Output("app-subtitle", "children"), Output("law-summary", "children"),
               Output("load-label", "children"), Output("preset-dropdown", "placeholder"),
               Output("browse-btn", "children"), Output("export-btn", "children"),
               Output("export-pdf-btn", "children"), Output("add-row-btn", "children"),
               Output("courses-table", "columns"), Output("departure-label", "children"),
-              Input("lang-selector", "value"))
+              Output("full-schedule-switch", "label"), Output("cap-mode-label", "children"),
+              Output("cap-mode-select", "options"), Input("lang-selector", "value"))
 def update_static_labels(lang):
     t = STRINGS[lang]
     columns = [
@@ -332,12 +359,16 @@ def update_static_labels(lang):
         {"name": t["col_price"], "id": "Price", "type": "text"},
         {"name": t["col_end_date"], "id": "End Date", "type": "text"},
         {"name": t["col_bundle"], "id": "Bundle", "type": "text"},
+        {"name": t["col_start_date"], "id": "Start Date", "type": "text"},
     ]
     law_criteria = [html.Li(c) for c in t["law_criteria"]]
-    return t["language_label"], t["app_title"], law_criteria, t["load_label"], t["preset_placeholder"], \
+    return t["language_label"], t["app_title"], law_links(t["app_subtitle"], lang), law_criteria, t["load_label"], \
+           t["preset_placeholder"], \
            icon_label("upload", t["browse_label"]), icon_label("download", t["export_label"]), \
            icon_label("file-earmark-pdf", t["export_pdf_label"]), icon_label("plus-lg", t["add_row"]), columns, \
-           t["departure_label"]
+           t["departure_label"], t["full_schedule_switch"].format(years=config.CAP_YEARS), \
+           t["cap_mode_label"].format(years=config.CAP_YEARS), \
+           [{"label": t["cap_mode_options"][mode], "value": mode} for mode in CAP_MODES]
 
 
 @app.callback(Output("courses-table", "data"), Input("preset-dropdown", "value"), Input("add-row-btn", "n_clicks"),

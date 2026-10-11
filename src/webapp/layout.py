@@ -5,9 +5,11 @@ from __future__ import annotations
 import dash_bootstrap_components as dbc
 from dash import Input, Output, dash_table, dcc, html
 
+from simulator import CAP_MODES
+
 from . import config
 from .auth import render_login_view, signed_in_identity
-from .helpers import icon_label, load_preset_rows, presets_for_session, slider_marks
+from .helpers import icon_label, law_links, load_preset_rows, presets_for_session, slider_marks
 from .instance import app
 from .strings import STRINGS
 
@@ -27,7 +29,11 @@ def render_main_view(identity: str | None):
     t = STRINGS[config.DEFAULT_LANG]
     navbar = dbc.Navbar(
         dbc.Container([
-            html.Span(t["app_title"], id="app-title", className="navbar-brand text-wrap fw-semibold"),
+            html.Div(className="navbar-brand text-wrap lh-sm", children=[
+                html.Div(t["app_title"], id="app-title", className="fw-semibold"),
+                html.Div(law_links(t["app_subtitle"], config.DEFAULT_LANG), id="app-subtitle",
+                         className="small text-white-50"),
+            ]),
             html.Div(
                 className="d-flex align-items-center gap-2 ms-auto",
                 children=[
@@ -117,10 +123,19 @@ def render_main_view(identity: str | None):
     departure = dbc.Card(
         dbc.CardBody([
             html.Div(
-                className="d-flex align-items-baseline gap-3 mb-2",
+                className="d-flex flex-wrap align-items-baseline gap-3 mb-2",
                 children=[
                     html.Label(t["departure_label"], id="departure-label", className="fw-semibold"),
                     html.Span(id="departure-date-label", className="fs-4 fw-bold text-primary"),
+                    # How the maximum total rendement period applies (art. 179, §5), per visitor: the app-wide
+                    #  --cap-mode is only its initial value.
+                    html.Div(className="d-flex align-items-baseline gap-2 ms-auto", children=[
+                        html.Label(t["cap_mode_label"].format(years=config.CAP_YEARS), id="cap-mode-label",
+                                   htmlFor="cap-mode-select", className="small text-nowrap"),
+                        dbc.Select(id="cap-mode-select", value=config.CAP_MODE, size="sm",
+                                   options=[{"label": t["cap_mode_options"][mode], "value": mode}
+                                            for mode in CAP_MODES]),
+                    ]),
                 ],
             ),
             dcc.Slider(
@@ -162,7 +177,13 @@ def render_main_view(identity: str | None):
             courses,
             departure,
             charts,
-            dbc.Card(dcc.Graph(id="rendement-timeline", config=GRAPH_CONFIG), body=True, class_name="mb-4 shadow-sm"),
+            # Off: the rendement periods as they are, each one ending where it is paid off or forgiven (art. 179, §5).
+            #  On: as they would have been without the maximum total rendement period (see with_forgiven_runs).
+            dbc.Card([
+                dbc.Switch(id="full-schedule-switch", value=False,
+                           label=t["full_schedule_switch"].format(years=config.CAP_YEARS), class_name="mb-0"),
+                dcc.Graph(id="rendement-timeline", config=GRAPH_CONFIG),
+            ], body=True, class_name="mb-4 shadow-sm"),
             dbc.Card(dbc.CardBody(id="law-application"), class_name="mb-4 shadow-sm"),
         ]),
     ])

@@ -3,13 +3,15 @@ the available sign-in methods and flags."""
 from __future__ import annotations
 
 import argparse
+import os
 
 from werkzeug.security import generate_password_hash
 
-from simulator import REPAYMENT_MONTHS, parse_decimal
+from simulator import CAP_MODES, INDEX_VALUES_CSV, REPAYMENT_MONTHS, parse_decimal
 
 from . import config
-from .server import app
+from .scheduler import start_monthly_index_update
+from .server import app, apply_cookie_policy
 
 
 def main() -> None:
@@ -31,8 +33,13 @@ def main() -> None:
                          help="print a hash for PASSWORD suitable for the AUTH_USERS env var (used by --auth "
                               "password and --auth basic), then exit")
     parser.add_argument("--cap-years", type=int, default=config.CAP_YEARS,
-                         help="maximum validity of a rendement period, in years (default: CAP_YEARS env var, else "
-                              "15 years as of art. 179, §5)")
+                         help="maximum total of cumulated rendement periods, in years, beyond which the remaining "
+                              "balance is forgiven (default: CAP_YEARS env var, else 15 years as of art. 179, §5)")
+    parser.add_argument("--cap-mode", choices=CAP_MODES, default=config.CAP_MODE,
+                         help="how the maximum total rendement period (--cap-years) applies initially, as the law "
+                              "can be read in two ways: to the months served by a bunch of cumulated periods, a later "
+                              "period starting a new bunch (bunch), or to each period on its own, forgiven that long "
+                              "after it started (period) (default: CAP_MODE env var, else bunch)")
     parser.add_argument("--min-rate", type=parse_decimal, default=config.MIN_RENDEMENT_RATE,
                          help="minimum rendement rate in € per month, shortening the rendement period of cheaper "
                               "courses; base amount, indexed every month like the threshold (default: "
@@ -47,6 +54,10 @@ def main() -> None:
                          help="amount in € below which the last month of a rendement period is merged into the "
                               "previous one, ending the period one month earlier; base amount, indexed every month "
                               "like the threshold (default: POSTPONE_REMAINDER env var, else none - not as of the law)")
+    parser.add_argument("--update-index-values", action="store_true", default=config.UPDATE_INDEX_VALUES,
+                         help=f"update {INDEX_VALUES_CSV.name} from Statbel's smoothed health index when the app "
+                              "starts, then on the first day of every month at midnight while it runs (default: "
+                              "UPDATE_INDEX_VALUES env var, else not updated)")
     args = parser.parse_args()
     if args.cap_years <= 0:
         parser.error("--cap-years must be strictly positive")
@@ -63,10 +74,15 @@ def main() -> None:
         raise SystemExit(0)
     config.LOCAL_MODE = args.local
     config.AUTH_METHOD = args.auth
+    apply_cookie_policy()
     config.CAP_YEARS = args.cap_years
+    config.CAP_MODE = args.cap_mode
     config.MIN_RENDEMENT_RATE = args.min_rate
     config.MAX_RENDEMENT_RATE = args.max_rate
     config.POSTPONE_REMAINDER = args.postpone_remainder
+    # In debug mode, the reloader runs the app in a child process (WERKZEUG_RUN_MAIN set): only that one updates.
+    if args.update_index_values and (not args.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
+        start_monthly_index_update()
     # Debug mode keeps hot reload and server-side tracebacks, but not Dash's dev tools pane at the bottom of the page.
     app.run(debug=args.debug, dev_tools_ui=args.debug)
 

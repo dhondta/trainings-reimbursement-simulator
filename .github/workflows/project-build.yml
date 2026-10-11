@@ -105,6 +105,7 @@ jobs:
         # Nominal scenarios, each simulated at every departure date
         run_case base     0 "TOTAL TO REIMBURSE" example.csv "${DEPS[@]}" --timeline
         run_case cap      0 "TOTAL TO REIMBURSE" example.csv "${DEPS[@]}" --cap-years 1
+        run_case period   0 "TOTAL TO REIMBURSE" example.csv "${DEPS[@]}" --cap-years 1 --cap-mode period
         run_case min      0 "TOTAL TO REIMBURSE" example.csv "${DEPS[@]}" --min-rate 250
         run_case min100   0 "TOTAL TO REIMBURSE" example.csv "${DEPS[@]}" --min-rate 100
         run_case max      0 "TOTAL TO REIMBURSE" example.csv "${DEPS[@]}" --max-rate 150
@@ -112,12 +113,14 @@ jobs:
         run_case postpone 0 "TOTAL TO REIMBURSE" example.csv "${DEPS[@]}" --min-rate 100 --max-rate 150 --postpone-remainder 400
         run_case bundle   0 "Bundle: B1 (A + B) - 6500.00€" "$F/bundle.csv" "${DEPS[@]}"
         run_case cheap    0 "TOTAL TO REIMBURSE" "$F/cheap.csv" "${DEPS[@]}"
-        for id in base cap min min100 max minmax postpone bundle cheap; do check_totals "$id"; done
+        for id in base cap period min min100 max minmax postpone bundle cheap; do check_totals "$id"; done
         # The timeline runs until the latest departure date
         LAST="$(date -d '+1 year +123 days' +%d/%m/%Y)"
         grep -qF "TIMELINE UNTIL $LAST" "$O/base.txt" || fail "base - no timeline until $LAST"
         # Properties that hold whatever the departure date
-        compare cap      "<=" base      # the cap forgives what is left after it
+        compare cap      "<=" base      # the cap forgives the balance beyond it
+        compare period   "<=" base      # whichever way it is counted
+        compare cap      "<=" period    # a bunch reaches it no later than its oldest period
         compare min      "<=" base      # a minimum rate pays off faster
         compare max      ">=" base      # a maximum rate pays off slower
         compare minmax   ">=" min100    # adding a maximum rate pays off slower

@@ -3,7 +3,8 @@
 STRINGS = {
     "fr": {
         "language_label": "Langue :",
-        "app_title": "Simulateur de remboursement des formations - Loi du 31/07/13, Art. 179",
+        "app_title": "Simulateur de remboursement des formations",
+        "app_subtitle": "Art. 179 de la loi du 28/02/2007, tel que remplacé par la loi du 31/07/2013",
         "load_label": "Charger un jeu de formations :",
         "preset_placeholder": "Charger un preset…",
         "browse_label": "Importer un CSV",
@@ -21,17 +22,22 @@ STRINGS = {
         "col_price": "Prix (€)",
         "col_end_date": "Date de fin (jj/mm/aaaa)",
         "col_bundle": "Groupe (facultatif)",
+        "col_start_date": "Début de non-activité (jj/mm/aaaa)",
         "law_criteria": [
-            "Une clause de formation est déclenchée dès que le coût cumulé des formations suivies sur une "
-            "fenêtre glissante de 24 mois dépasse un seuil indexé (base de 5 000 €, indexée depuis 2013).",
-            "Une fois déclenchée, le travailleur doit 24 mois de « rendement » (service) après cette formation ; "
-            "partir avant la fin de cette période implique de rembourser un montant dégressif "
+            "Une formation suivie aux frais de la Défense déclenche une période de rendement dès que le coût "
+            "cumulé des formations sur une fenêtre glissante de 24 mois dépasse un seuil indexé (base de "
+            "5 000 €, liée à l'indice-pivot 138,01).",
+            "Le militaire doit alors 24 mois de « rendement » (service) après cette formation ; quitter les "
+            "Forces armées avant la fin de cette période implique de rembourser un montant dégressif "
             "(prix × mois restants / 24).",
             "Lorsque les périodes de rendement de plusieurs formations se chevauchent, seule la plus récente "
             "compte comme du service chaque mois - les plus anciennes restent suspendues jusqu'à ce qu'elle "
             "soit totalement prestée.",
-            "Selon le §5, cette obligation s'éteint totalement après 15 ans depuis le début de la période, "
-            "quel que soit le solde restant.",
+            "Selon le §5, les périodes de rendement de plusieurs formations sont cumulées, et la période totale "
+            "de rendement ne peut excéder 15 ans : au-delà, le solde restant est remis (compté par groupe de "
+            "périodes cumulées ou par période de rendement, selon le choix).",
+            "Selon le §6, la période de rendement en cours est suspendue tant que le militaire est en "
+            "non-activité (une ligne avec une date de début et sans prix).",
         ],
         "explanation_title": "Application des critères à cette simulation",
         "explanation_threshold": (
@@ -48,15 +54,32 @@ STRINGS = {
             "Au {date}, {n_active} période(s) sont activement prestées et {n_suspended} sont suspendues "
             "derrière une formation plus récente."
         ),
-        "explanation_cap_none": "Aucune période n'a encore atteint sa limite de validité de {years} ans "
-                                "(Art. 179, §5).",
+        "explanation_cap_none": (
+            "Aucun solde n'est remis en application de la limite de {years} ans des périodes de rendement "
+            "cumulées (Art. 179, §5)."
+        ),
         "explanation_cap_some": (
-            "{n_capped} période(s) ont atteint leur limite de validité de {years} ans et ont vu leur solde restant "
-            "remis, en application de l'Art. 179 §5 : {amount} €."
+            "En application de la limite de {years} ans des périodes de rendement cumulées (Art. 179, §5), "
+            "{amount} € sont remis sur {n_capped} période(s)."
         ),
         "explanation_cap_custom": (
-            "Hors loi : la limite de validité d'une période de rendement est fixée à {years} ans au lieu des "
-            "{law_years} ans prévus par l'Art. 179, §5."
+            "Hors loi : la période totale de rendement cumulée est limitée à {years} ans au lieu des {law_years} "
+            "ans prévus par l'Art. 179, §5."
+        ),
+        "explanation_mode_bunch": (
+            "Selon le choix, la limite de {years} ans est comptée par groupe de périodes de rendement cumulées, "
+            "prestées l'une après l'autre sans interruption : {bunch} mois sont prestés dans le groupe en cours "
+            "au {date}{reached}."
+        ),
+        "explanation_mode_period": (
+            "Selon le choix, la limite de {years} ans est comptée par période de rendement, à partir de son début "
+            "(suspensions comprises, hors non-activité) : {n_reached} période(s) l'ont atteinte au {date}{next}."
+        ),
+        "explanation_mode_reached": " - les {years} ans ont été atteints le {when}",
+        "explanation_mode_will_reach": " - les {years} ans seront atteints le {when}",
+        "explanation_mode_next": " - la suivante, {code}, l'atteindra le {when}",
+        "explanation_mode_compare": (
+            "Selon l'autre lecture ({other}), {total} € seraient dus au {date}, au lieu de {current} €."
         ),
         "explanation_min_rate": (
             "Hors loi : un taux de rendement minimal de {rate} €/mois (montant de base, indexé chaque mois comme le "
@@ -75,7 +98,15 @@ STRINGS = {
             "base, indexé chaque mois comme le seuil, soit {amount_now} € ce mois-ci), ce reliquat est reporté sur le "
             "mois précédent, ce qui termine la période un mois plus tôt."
         ),
+        "explanation_inactivity": (
+            "{months} mois de non-activité ({labels}) suspendent la période de rendement en cours (§6) - un mois "
+            "touché, même en partie, n'est pas presté."
+        ),
+        "inactivity_default": "Non-activité",
         "departure_label": "Date de départ envisagée :",
+        "full_schedule_switch": "Calendrier complet, sans la limite de {years} ans (Art. 179, §5)",
+        "cap_mode_label": "Limite de {years} ans (Art. 179, §5) :",
+        "cap_mode_options": {"bunch": "par groupe de périodes cumulées", "period": "par période de rendement"},
         "no_valid_courses": "Aucune formation valide.",
         "total_label": "Total à rembourser",
         "period_label": "Période de rendement",
@@ -92,7 +123,9 @@ STRINGS = {
         "served": "Presté",
         "suspended": "Suspendu",
         "remaining": "Restant",
-        "expired": "Expiré",
+        "expired": "Remis",
+        "lapsed": "Suspendu, remis",
+        "inactive": "Non-activité",
         "departure_marker": "Départ",
         "rate_label": "Taux de rendement",
         "rate_detail": "{code} - {month}",
@@ -105,11 +138,16 @@ STRINGS = {
         "err_negative_price": "le prix ne peut pas être négatif",
         "err_invalid_date": "Ligne {i} ({code}) : date invalide ({exc}).",
         "err_bundle_name": "Groupe(s) portant le nom d'une formation hors du groupe, ignoré(s) : {names}.",
+        "err_inactivity_fields": "Ligne {i} ({code}) : une période de non-activité n'a ni prix ni groupe.",
+        "err_inactivity_dates": "Ligne {i} ({code}) : une période de non-activité ne peut finir avant de commencer.",
         "report_title": "Plan de remboursement des formations",
         "report_subtitle": "Départ envisagé le {date} - rapport généré le {today}",
         "report_source": "Jeu de formations : {name}",
         "report_summary": "Synthèse",
-        "report_rules": "Règles appliquées (Loi du 31/07/13, Art. 179)",
+        "report_rules": (
+            "Règles appliquées (Art. 179 de la loi du 28/02/2007, "
+            "tel que remplacé par la loi du 31/07/2013)"
+        ),
         "report_courses": "Formations et test du seuil",
         "report_details": "Remboursement par formation au {date}",
         "report_charts": "Graphiques",
@@ -132,7 +170,8 @@ STRINGS = {
     },
     "nl": {
         "language_label": "Taal:",
-        "app_title": "Simulator voor terugbetaling van opleidingen - Wet van 31/07/13, Art. 179",
+        "app_title": "Simulator voor terugbetaling van opleidingen",
+        "app_subtitle": "Art. 179 van de wet van 28/02/2007, zoals vervangen door de wet van 31/07/2013",
         "load_label": "Een reeks opleidingen laden:",
         "preset_placeholder": "Een preset laden…",
         "browse_label": "CSV importeren",
@@ -150,17 +189,21 @@ STRINGS = {
         "col_price": "Prijs (€)",
         "col_end_date": "Einddatum (dd/mm/jjjj)",
         "col_bundle": "Bundel (optioneel)",
+        "col_start_date": "Begin non-activiteit (dd/mm/jjjj)",
         "law_criteria": [
-            "Een opleidingsbeding wordt geactiveerd zodra de cumulatieve kost van opleidingen binnen een "
-            "glijdend venster van 24 maanden een geïndexeerde drempel overschrijdt (basis van € 5.000, "
-            "geïndexeerd sinds 2013).",
-            "Eenmaal geactiveerd, is de werknemer 24 maanden \"rendement\" (dienst) verschuldigd na die "
-            "opleiding; vertrekken voordat die periode voltooid is, houdt in dat een degressief bedrag moet "
+            "Een opleiding gevolgd op kosten van Defensie activeert een rendementsperiode zodra de "
+            "gecumuleerde kost van opleidingen binnen een glijdend venster van 24 maanden een geïndexeerde "
+            "drempel overschrijdt (basis van € 5.000, gekoppeld aan de spilindex 138,01).",
+            "De militair is dan 24 maanden \"rendement\" (dienst) verschuldigd na die opleiding; de "
+            "Krijgsmacht verlaten voordat die periode voltooid is, houdt in dat een degressief bedrag moet "
             "worden terugbetaald (prijs × resterende maanden / 24).",
             "Wanneer de rendementsperiodes van meerdere opleidingen elkaar overlappen, telt enkel de meest "
             "recente als dienst per maand - de oudere blijven geschorst tot ze volledig is gepresteerd.",
-            "Volgens §5 vervalt deze verplichting volledig na 15 jaar vanaf de start van de periode, ongeacht "
-            "het resterende saldo.",
+            "Volgens §5 worden de rendementsperiodes van meerdere opleidingen gecumuleerd, en mag de totale "
+            "rendementsperiode 15 jaar niet overschrijden: daarna wordt het resterende saldo kwijtgescholden "
+            "(geteld per groep van gecumuleerde periodes of per rendementsperiode, volgens de keuze).",
+            "Volgens §6 wordt de lopende rendementsperiode geschorst zolang de militair in non-activiteit "
+            "is (een rij met een begindatum en zonder prijs).",
         ],
         "explanation_title": "Toepassing van de criteria op deze simulatie",
         "explanation_threshold": (
@@ -177,15 +220,34 @@ STRINGS = {
             "maand. Op {date} worden {n_active} periode(n) actief gepresteerd en zijn {n_suspended} geschorst "
             "achter een recentere opleiding."
         ),
-        "explanation_cap_none": "Geen enkele periode heeft nog haar geldigheidslimiet van {years} jaar bereikt "
-                                "(Art. 179, §5).",
+        "explanation_cap_none": (
+            "Er wordt geen saldo kwijtgescholden met toepassing van de limiet van {years} jaar van de "
+            "gecumuleerde rendementsperiodes (Art. 179, §5)."
+        ),
         "explanation_cap_some": (
-            "{n_capped} periode(n) hebben hun geldigheidslimiet van {years} jaar bereikt en hun resterend saldo werd "
-            "kwijtgescholden, conform Art. 179 §5: {amount} €."
+            "Met toepassing van de limiet van {years} jaar van de gecumuleerde rendementsperiodes (Art. 179, §5) "
+            "wordt {amount} € kwijtgescholden op {n_capped} periode(n)."
         ),
         "explanation_cap_custom": (
-            "Buiten de wet: de geldigheidslimiet van een rendementsperiode is vastgesteld op {years} jaar in plaats "
-            "van de {law_years} jaar voorzien door Art. 179, §5."
+            "Buiten de wet: de gecumuleerde totale rendementsperiode is beperkt tot {years} jaar in plaats van de "
+            "{law_years} jaar voorzien door Art. 179, §5."
+        ),
+        "explanation_mode_bunch": (
+            "Volgens de keuze wordt de limiet van {years} jaar geteld per groep van gecumuleerde "
+            "rendementsperiodes, zonder onderbreking na elkaar gepresteerd: op {date} zijn {bunch} maand(en) "
+            "gepresteerd in de lopende groep{reached}."
+        ),
+        "explanation_mode_period": (
+            "Volgens de keuze wordt de limiet van {years} jaar geteld per rendementsperiode, vanaf haar begin "
+            "(schorsingen inbegrepen, non-activiteit niet): op {date} hebben {n_reached} periode(s) ze "
+            "bereikt{next}."
+        ),
+        "explanation_mode_reached": " - de {years} jaar werden bereikt op {when}",
+        "explanation_mode_will_reach": " - de {years} jaar worden bereikt op {when}",
+        "explanation_mode_next": " - de volgende, {code}, bereikt ze op {when}",
+        "explanation_mode_compare": (
+            "Volgens de andere lezing ({other}) zou op {date} {total} € verschuldigd zijn, in plaats van "
+            "{current} €."
         ),
         "explanation_min_rate": (
             "Buiten de wet: er geldt een minimaal rendementspercentage van {rate} €/maand (basisbedrag, elke maand "
@@ -204,7 +266,15 @@ STRINGS = {
             "(basisbedrag, elke maand geïndexeerd zoals de drempel, d.w.z. {amount_now} € deze maand), wordt dat "
             "restbedrag bij de vorige maand gevoegd, waardoor de periode een maand vroeger eindigt."
         ),
+        "explanation_inactivity": (
+            "{months} maand(en) non-activiteit ({labels}) schorsen de lopende rendementsperiode (§6) - een "
+            "maand die, zelfs gedeeltelijk, geraakt wordt, wordt niet gepresteerd."
+        ),
+        "inactivity_default": "Non-activiteit",
         "departure_label": "Beoogde vertrekdatum:",
+        "full_schedule_switch": "Volledige planning, zonder de limiet van {years} jaar (Art. 179, §5)",
+        "cap_mode_label": "Limiet van {years} jaar (Art. 179, §5):",
+        "cap_mode_options": {"bunch": "per groep van gecumuleerde periodes", "period": "per rendementsperiode"},
         "no_valid_courses": "Geen geldige opleiding.",
         "total_label": "Terug te betalen bedrag",
         "period_label": "Rendementsperiode",
@@ -221,7 +291,9 @@ STRINGS = {
         "served": "Gepresteerd",
         "suspended": "Geschorst",
         "remaining": "Resterend",
-        "expired": "Verlopen",
+        "expired": "Kwijtgescholden",
+        "lapsed": "Geschorst, kwijtgescholden",
+        "inactive": "Non-activiteit",
         "departure_marker": "Vertrek",
         "rate_label": "Rendementspercentage",
         "rate_detail": "{code} - {month}",
@@ -234,11 +306,16 @@ STRINGS = {
         "err_negative_price": "de prijs mag niet negatief zijn",
         "err_invalid_date": "Rij {i} ({code}): ongeldige datum ({exc}).",
         "err_bundle_name": "Bundel(s) met de naam van een opleiding buiten de bundel, genegeerd: {names}.",
+        "err_inactivity_fields": "Rij {i} ({code}): een periode van non-activiteit heeft geen prijs noch bundel.",
+        "err_inactivity_dates": "Rij {i} ({code}): een periode van non-activiteit kan niet eindigen voor ze begint.",
         "report_title": "Terugbetalingsplan van opleidingen",
         "report_subtitle": "Beoogd vertrek op {date} - rapport gegenereerd op {today}",
         "report_source": "Reeks opleidingen: {name}",
         "report_summary": "Overzicht",
-        "report_rules": "Toegepaste regels (Wet van 31/07/13, Art. 179)",
+        "report_rules": (
+            "Toegepaste regels (Art. 179 van de wet van 28/02/2007, "
+            "zoals vervangen door de wet van 31/07/2013)"
+        ),
         "report_courses": "Opleidingen en drempeltest",
         "report_details": "Terugbetaling per opleiding op {date}",
         "report_charts": "Grafieken",
@@ -261,7 +338,8 @@ STRINGS = {
     },
     "en": {
         "language_label": "Language:",
-        "app_title": "Training Reimbursement Simulator - Law of 31/07/13 Art. 179",
+        "app_title": "Training Reimbursement Simulator",
+        "app_subtitle": "Art. 179 of the law of 28/02/2007, as replaced by the law of 31/07/2013",
         "load_label": "Load a set of courses:",
         "preset_placeholder": "Load a preset…",
         "browse_label": "Import CSV",
@@ -279,16 +357,21 @@ STRINGS = {
         "col_price": "Price (€)",
         "col_end_date": "End date (dd/mm/yyyy)",
         "col_bundle": "Bundle (optional)",
+        "col_start_date": "Non-activity start (dd/mm/yyyy)",
         "law_criteria": [
-            "A training clause is triggered whenever the cumulative cost of trainings completed within a "
-            "rolling 24-month window exceeds an indexed threshold (€5,000 base, indexed since 2013).",
-            "Once triggered, the employee owes 24 months of \"rendement\" (service) after that training; "
-            "leaving before completing it means reimbursing a degressively reduced amount "
+            "A training followed at the expense of Defence triggers a rendement period whenever the cumulative "
+            "cost of trainings within a rolling 24-month window exceeds an indexed threshold (€5,000 base, "
+            "linked to the pivot index 138.01).",
+            "The military member then owes 24 months of \"rendement\" (service) after that training; leaving "
+            "the Armed Forces before completing it means reimbursing a degressively reduced amount "
             "(price × months still owed / 24).",
             "When several trainings' rendement periods overlap, only the most recent one counts as service "
             "each month - older ones stay suspended until it is fully served.",
-            "Per §5, this obligation lapses entirely after 15 years from the start of the period, whatever "
-            "remains unserved.",
+            "Per §5, the rendement periods of several trainings are cumulated, and the total rendement period "
+            "cannot exceed 15 years: beyond, the remaining balance is forgiven (counted per bunch of cumulated "
+            "periods or per rendement period, as selected).",
+            "Per §6, the rendement period in progress is suspended while the military member is in "
+            "non-activity (a row with a start date and no price).",
         ],
         "explanation_title": "How these criteria apply to this simulation",
         "explanation_threshold": (
@@ -305,14 +388,32 @@ STRINGS = {
             "month. As of {date}, {n_active} period(s) are actively accruing service and {n_suspended} are "
             "suspended behind a more recent one."
         ),
-        "explanation_cap_none": "No period has yet reached its {years}-year validity limit (Art. 179, §5).",
+        "explanation_cap_none": (
+            "No balance is forgiven under the {years}-year limit of the cumulated rendement periods (Art. 179, "
+            "§5)."
+        ),
         "explanation_cap_some": (
-            "{n_capped} period(s) have reached their {years}-year validity limit and had their remaining balance "
-            "forgiven, per Art. 179 §5: {amount} €."
+            "Under the {years}-year limit of the cumulated rendement periods (Art. 179, §5), {amount} € is "
+            "forgiven on {n_capped} period(s)."
         ),
         "explanation_cap_custom": (
-            "Beyond the law: the validity limit of a rendement period is set to {years} years instead of the "
+            "Beyond the law: the cumulated total rendement period is limited to {years} years instead of the "
             "{law_years} years provided by Art. 179, §5."
+        ),
+        "explanation_mode_bunch": (
+            "As selected, the {years}-year limit is counted per bunch of cumulated rendement periods, served one "
+            "after the other without interruption: {bunch} month(s) are served in the current bunch as of "
+            "{date}{reached}."
+        ),
+        "explanation_mode_period": (
+            "As selected, the {years}-year limit is counted per rendement period, from its start (suspensions "
+            "included, non-activity excluded): {n_reached} period(s) reached it as of {date}{next}."
+        ),
+        "explanation_mode_reached": " - the {years} years were reached on {when}",
+        "explanation_mode_will_reach": " - the {years} years will be reached on {when}",
+        "explanation_mode_next": " - the next one, {code}, will reach it on {when}",
+        "explanation_mode_compare": (
+            "With the other reading ({other}), {total} € would be owed as of {date}, instead of {current} €."
         ),
         "explanation_min_rate": (
             "Beyond the law: a minimum rendement rate of {rate} €/month (base amount, indexed every month like the "
@@ -331,7 +432,15 @@ STRINGS = {
             "amount, indexed every month like the threshold, i.e. {amount_now} € this month), this remainder is merged "
             "into the previous month, which ends the period one month earlier."
         ),
+        "explanation_inactivity": (
+            "{months} month(s) of non-activity ({labels}) suspend the rendement period in progress (§6) - a "
+            "month touched, even partly, is not served."
+        ),
+        "inactivity_default": "Non-activity",
         "departure_label": "Planned departure date:",
+        "full_schedule_switch": "Full schedule, without the {years}-year limit (Art. 179, §5)",
+        "cap_mode_label": "{years}-year limit (Art. 179, §5):",
+        "cap_mode_options": {"bunch": "per bunch of cumulated periods", "period": "per rendement period"},
         "no_valid_courses": "No valid course.",
         "total_label": "Total to reimburse",
         "period_label": "Rendement period",
@@ -348,7 +457,9 @@ STRINGS = {
         "served": "Served",
         "suspended": "Suspended",
         "remaining": "Remaining",
-        "expired": "Expired",
+        "expired": "Forgiven",
+        "lapsed": "Suspended, forgiven",
+        "inactive": "Non-activity",
         "departure_marker": "Departure",
         "rate_label": "Rendement rate",
         "rate_detail": "{code} - {month}",
@@ -361,11 +472,13 @@ STRINGS = {
         "err_negative_price": "the price cannot be negative",
         "err_invalid_date": "Row {i} ({code}): invalid date ({exc}).",
         "err_bundle_name": "Bundle(s) named like a course outside of them, ignored: {names}.",
+        "err_inactivity_fields": "Row {i} ({code}): a period of non-activity has no price nor bundle.",
+        "err_inactivity_dates": "Row {i} ({code}): a period of non-activity cannot end before it starts.",
         "report_title": "Training reimbursement plan",
         "report_subtitle": "Planned departure on {date} - report generated on {today}",
         "report_source": "Course set: {name}",
         "report_summary": "Summary",
-        "report_rules": "Rules applied (Law of 31/07/13, Art. 179)",
+        "report_rules": "Rules applied (Art. 179 of the law of 28/02/2007, as replaced by the law of 31/07/2013)",
         "report_courses": "Courses and threshold test",
         "report_details": "Reimbursement per course on {date}",
         "report_charts": "Charts",

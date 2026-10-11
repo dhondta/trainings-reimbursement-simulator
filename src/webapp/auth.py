@@ -16,11 +16,42 @@ from email.message import EmailMessage
 import dash_bootstrap_components as dbc
 from dash import Input, Output, State, html, no_update
 from flask import Response, has_request_context, redirect, request, session
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import config
 from .instance import app
 from .strings import STRINGS
+
+# Checked instead of a stored hash for an unknown username, so that it takes as long to reject as a known one (no
+#  username enumeration by timing).
+_DUMMY_HASH = generate_password_hash(secrets.token_hex(16))
+
+
+def _log(message: str):
+    """ Logs a security event (failed sign-in, lockout, failed code delivery) on the server console. """
+    print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] auth: {message}", flush=True)
+
+
+def check_credentials(username: str, password: str) -> bool | None:
+    """ Whether username/password match AUTH_USERS (--auth password and --auth basic), or None if the username is
+     locked out, having failed LOGIN_MAX_FAILURES times within LOGIN_LOCKOUT (online brute force). """
+    now = datetime.now()
+    if len(config.FAILED_LOGINS) > 1000:  # Forget the failures too old to matter, so the dict stays small.
+        for name in [n for n, times in config.FAILED_LOGINS.items() if now - times[-1] >= config.LOGIN_LOCKOUT]:
+            del config.FAILED_LOGINS[name]
+    failures = [t for t in config.FAILED_LOGINS.get(username, []) if now - t < config.LOGIN_LOCKOUT]
+    if len(failures) >= config.LOGIN_MAX_FAILURES:
+        config.FAILED_LOGINS[username] = failures
+        return None
+    stored_hash = config.AUTH_USERS.get(username)
+    valid = check_password_hash(stored_hash or _DUMMY_HASH, password or "") and stored_hash is not None
+    if valid:
+        config.FAILED_LOGINS.pop(username, None)
+        return True
+    config.FAILED_LOGINS[username] = failures + [now]
+    _log(f"failed sign-in for {username!r} ({len(failures) + 1}/{config.LOGIN_MAX_FAILURES})"
+         + (" - locked out" if len(failures) + 1 >= config.LOGIN_MAX_FAILURES else ""))
+    return False
 
 
 def deliver_otp(to_email: str, code: str) -> bool:
@@ -41,11 +72,14 @@ def render_login_view():
 
 def login_card(intro: str, *body) -> dbc.Container:
     """ The frame shared by every login form: a centered card titled with the app's name. """
+    from .helpers import law_links  # Not at the top: helpers imports this module.
     return dbc.Container(
         dbc.Row(
             dbc.Col(
                 dbc.Card([
-                    dbc.CardHeader(html.H5(STRINGS[config.DEFAULT_LANG]["app_title"], className="mb-0"),
+                    dbc.CardHeader([html.H5(STRINGS[config.DEFAULT_LANG]["app_title"], className="mb-0"),
+                                    html.Div(law_links(STRINGS[config.DEFAULT_LANG]["app_subtitle"],
+                                                       config.DEFAULT_LANG), className="small text-white-50")],
                                    class_name="bg-primary text-white py-3"),
                     dbc.CardBody([html.P(intro, className="text-muted"), *body]),
                 ], class_name="shadow-sm"),
@@ -243,8 +277,7 @@ def require_basic_auth():
     if config.LOCAL_MODE or config.AUTH_METHOD != "basic":
         return
     auth = request.authorization
-    stored_hash = config.AUTH_USERS.get(auth.username) if auth else None
-    if not auth or not stored_hash or not check_password_hash(stored_hash, auth.password or ""):
+    if not auth or not check_credentials(auth.username or "", auth.password or ""):
         return Response("Authentication required.", 401,
                         {"WWW-Authenticate": 'Basic realm="Training Reimbursement Simulator"'})
 
@@ -256,7 +289,10 @@ def send_otp(n_clicks, email):
     hidden, shown = {"display": "none"}, {}
     if not config.EMAIL_RE.match(email):
         return "Please enter a valid email address.", hidden
-    now, pending = datetime.now(), config.PENDING_OTPS.get(email)
+    now = datetime.now()
+    for address in [a for a, p in config.PENDING_OTPS.items() if now > p["expires_at"]]:
+        del config.PENDING_OTPS[address]  # Expired codes are forgotten, so the dict stays small.
+    pending = config.PENDING_OTPS.get(email)
     if pending and now - pending["sent_at"] < config.OTP_RESEND_COOLDOWN:
         return "A code was already sent recently - please wait a moment.", shown
     code = f"{secrets.randbelow(10 ** config.OTP_LENGTH):0{config.OTP_LENGTH}d}"
@@ -264,7 +300,10 @@ def send_otp(n_clicks, email):
     try:
         sent = deliver_otp(email, code)
     except Exception as exc:
-        return f"Could not send the email: {exc}", hidden
+        # The details (e.g. of the mail server) are for the server's logs only.
+        _log(f"could not send a code to {email}: {exc}")
+        del config.PENDING_OTPS[email]
+        return "Could not send the email - please try again later.", hidden
     if sent:
         return f"A verification code was sent to {email}.\n" \
                 "Please check to make sure it hasn't been sent to your spam folder.", shown
@@ -286,8 +325,9 @@ def verify_otp(n_clicks, email, code):
     if pending["attempts"] >= config.OTP_MAX_ATTEMPTS:
         del config.PENDING_OTPS[email]
         return "Too many attempts - please request a new code.", no_update
-    if code != pending["code"]:
+    if not secrets.compare_digest(code, pending["code"]):
         pending["attempts"] += 1
+        _log(f"incorrect code for {email} ({pending['attempts']}/{config.OTP_MAX_ATTEMPTS})")
         return "Incorrect code.", no_update
     del config.PENDING_OTPS[email]
     session["identity"] = email
@@ -300,8 +340,9 @@ def verify_otp(n_clicks, email, code):
               prevent_initial_call=True)
 def verify_password(n_clicks, username, password):
     username = (username or "").strip()
-    stored_hash = config.AUTH_USERS.get(username)
-    if not stored_hash or not check_password_hash(stored_hash, password or ""):
+    if (valid := check_credentials(username, password or "")) is None:
+        return "Too many failed attempts - please try again later.", no_update
+    if not valid:
         return "Invalid username or password.", no_update
     session["identity"] = username
     session.permanent = True

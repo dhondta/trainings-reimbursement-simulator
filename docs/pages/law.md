@@ -1,8 +1,12 @@
-# The law of 31/07/2013, Art. 179
+# The law: Art. 179
 
-This page describes how the simulator models the training-reimbursement clause as it currently stands. This is the
-default behavior of both [`simulator.py`](command-line.md) and [`dash_app.py`](dashboard.md): as long as none of the
-options described in [Beyond the law](beyond-the-law.md) is set, the results follow the rules below.
+This page describes how the simulator models Art. 179 of the [law of 28/02/2007](https://www.ejustice.just.fgov.be/cgi_loi/change_lg.pl?language=fr&la=F&table_name=loi&cn=2007022835) on the status of military personnel,
+as replaced by the [law of 31/07/2013](https://www.ejustice.just.fgov.be/cgi_loi/change_lg.pl?language=fr&la=F&table_name=loi&cn=2013073104), for the trainings of its §1, 5°: any training followed at the expense of Defence
+by a career military member or an auxiliary officer. The texts, their history and the open questions are detailed in
+[Legal basis](legal-basis.md).
+
+This is the default behavior of both [`simulator.py`](command-line.md) and [`dash_app.py`](dashboard.md): as long as
+none of the options described in [Beyond the law](beyond-the-law.md) is set, the results follow the rules below.
 
 ## Rules
 
@@ -13,12 +17,22 @@ months** (the training itself included) exceeds an **indexed threshold**: a base
 indexation coefficient applicable at the end date of the training (see [Indexation table](input-files.md#indexation-table)).
 For instance, with the coefficient 2.2080 applicable since 01/09/2026, the threshold is €11,040.00.
 
+The rule applies to the trainings ending **from 04/06/2009 on**, when it was introduced in the [law of 16/03/2000](https://www.ejustice.just.fgov.be/cgi_loi/change_lg.pl?language=fr&la=F&table_name=loi&cn=2000031635) (it was
+taken over unchanged in the [law of 28/02/2007](https://www.ejustice.just.fgov.be/cgi_loi/change_lg.pl?language=fr&la=F&table_name=loi&cn=2007022835) on 31/12/2013). Earlier trainings never trigger the obligation, but
+still count in the cumulative cost of the next ones.
+
+The minimum is to be fixed by the King, without being lower than €5,000: as no royal decree fixing it was found, the
+simulator uses €5,000.
+
 ### Rendement period
 
-Once triggered, the employee owes **24 months of service** ("rendement") after that training. The period starts on the
+Once triggered, the military member owes **24 months of service** ("rendement") after that training. The period starts on the
 first day of the month following the end date of the training.
 
-Leaving before the period is complete means reimbursing a **degressive amount**:
+Leaving before the period is complete, by resignation or dismissal ex officio for a career military member
+(Art. 180, al. 3), or by termination of the engagement at their request or for disciplinary reasons, moral or
+professional unfitness for an auxiliary officer (Art. 181, al. 4 - see
+[Who is concerned](legal-basis.md#who-is-concerned)), means reimbursing a **degressive amount**:
 
 ```
 reimbursement = price × months still owed / 24
@@ -31,10 +45,53 @@ A course is only owed once it has been completed, i.e. for departure dates after
 When several rendement periods overlap, **only the most recently triggered one accrues service each month**. Older
 ones are suspended until it is fully served, then resume where they stopped.
 
-### Validity cap (§5)
+### Maximum total rendement period (§5)
 
-A rendement period's clause **stops producing any effect 15 years after it started**, regardless of how much of it was
-actually served. The remaining balance is forgiven, not carried forward.
+> The rendement periods corresponding to various trainings are cumulated. The total rendement period may not exceed
+> fifteen years.
+
+(Unofficial translation - see [Legal basis](legal-basis.md) for the texts.)
+
+The rendement periods of the various trainings are **cumulated**, and the total cannot exceed **15 years**. The
+explanatory memorandum of the [law of 31/07/2013](https://www.ejustice.just.fgov.be/cgi_loi/change_lg.pl?language=fr&la=F&table_name=loi&cn=2013073104) confirms that this limit applies to the cumulation of several trainings
+(a single training being limited by §2), so that trainings do not lead to "the obligation to perform more than
+fifteen years of active service" (see [Legal basis](legal-basis.md#maximum-total-rendement-period)). As months of
+[non-activity](#non-activity-6) are not rendement, they do not count towards the 15 years.
+
+The text does not say how the 15 years are measured. The simulator offers two readings, with the `--cap-mode` option,
+or with the cap mode selector of the [web dashboard](dashboard.md) (whose initial value is set by `--cap-mode` or the
+`CAP_MODE` environment variable):
+
+- **`bunch`** (default) - per **bunch of cumulated periods**: the rendement periods served one after the other,
+  without interruption, form a bunch, whose months of rendement served are counted. Once they reach 15 years, the
+  remaining balance of every period of the bunch is forgiven. A training followed afterwards starts a new bunch.
+- **`period`** - per **rendement period**: each period is limited on its own, its remaining balance being forgiven 15
+  years after it started, counting the months it was suspended behind more recent periods.
+
+A bunch reaches 15 years no later than its oldest period, so `bunch` never gives a higher amount than `period`.
+
+For instance, 10 trainings of €12,000 ending every 6 months from 15/01/2014 on, each starting a 24-month period, add
+up to 240 months of rendement, served one after the other without interruption from 01/02/2014 on:
+
+| Departure | `bunch` | `period` |
+|---|---|---|
+| 01/12/2020 | 79,000 € | 79,000 € |
+| 01/03/2029 | 0 € - the bunch reached 15 years on 01/02/2029, so the remaining balance of its 4 oldest periods is forgiven | 20,500 € - only the oldest period, started on 01/02/2014, is forgiven |
+| 01/01/2030 | 0 € | 6,500 € - the second period was forgiven on 01/08/2029, the third one will be on 01/02/2030 |
+
+### Non-activity (§6)
+
+The rendement period in progress is **suspended while the military member is in non-activity**, a position defined by
+Art. 189 of the [law of 28/02/2007](https://www.ejustice.just.fgov.be/cgi_loi/change_lg.pl?language=fr&la=F&table_name=loi&cn=2007022835): temporary withdrawal of employment (e.g. by career
+interruption, for family reasons, for health reasons, for personal convenience or as a disciplinary measure), illegal
+absence, serving a custodial sentence, ex officio political leave, or some criminal convictions. Other absences, such as
+annual leave, are not non-activity. Periods of non-activity are added to the [course list](input-files.md#course-list)
+as rows with a start date, an end date and no price. As rendement is counted in whole months (§4), **every month a period of non-activity touches, even partly, is not
+served**: for instance, a non-activity from 15/03/2025 to 10/05/2025 suspends March, April and May 2025. The rendement
+periods then end as many months later.
+
+With the [worked example](#worked-example) and this non-activity, FOR508 has only served 12 months by 01/06/2026
+instead of 15, which raises the total to reimburse from 11,267.12 € to 12,439.57 €.
 
 ### Bundles
 
