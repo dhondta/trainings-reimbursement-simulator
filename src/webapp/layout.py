@@ -49,6 +49,10 @@ def render_main_view(identity: str | None):
                         label_class_name="btn btn-sm btn-outline-light",
                         label_checked_class_name="active",
                     ),
+                    # Both icons, the one of the other color mode only being shown (see theme.css).
+                    dbc.Button([html.I(className="bi bi-moon-stars-fill theme-icon-dark"),
+                                html.I(className="bi bi-sun-fill theme-icon-light")], id="theme-toggle", n_clicks=0,
+                               size="sm", color="light", outline=True, title=t["theme_toggle"]),
                     *([dbc.Button(icon_label("box-arrow-right", "Sign out"), id="logout-btn", n_clicks=0, size="sm",
                                   color="light", outline=True, class_name="ms-2")] if can_sign_out else []),
                 ],
@@ -107,11 +111,12 @@ def render_main_view(identity: str | None):
                 editable=True,
                 row_deletable=True,
                 style_table={"overflowX": "auto"},
-                style_cell={"padding": "8px 12px", "textAlign": "left",
-                            "border": f"1px solid {config.THEME_COLORS['border']}"},
-                style_header={"fontWeight": "600", "backgroundColor": config.THEME_COLORS["light"]},
+                # Bootstrap's CSS variables, so that the table follows the color mode (night mode).
+                style_cell={"padding": "8px 12px", "textAlign": "left", "color": "var(--bs-body-color)",
+                            "backgroundColor": "var(--bs-body-bg)", "border": "1px solid var(--bs-border-color)"},
+                style_header={"fontWeight": "600", "backgroundColor": "var(--bs-tertiary-bg)"},
                 style_data_conditional=[
-                    {"if": {"row_index": "odd"}, "backgroundColor": "#FCFCFD"},
+                    {"if": {"row_index": "odd"}, "backgroundColor": "rgba(var(--bs-emphasis-color-rgb), 0.015)"},
                     {"if": {"state": "active"}, "backgroundColor": "rgba(52, 152, 219, 0.08)",
                      "border": f"1px solid {config.THEME_COLORS['info']}"},
                 ],
@@ -182,6 +187,9 @@ def render_main_view(identity: str | None):
             dbc.Card([
                 dbc.Switch(id="full-schedule-switch", value=False,
                            label=t["full_schedule_switch"].format(years=config.CAP_YEARS), class_name="mb-0"),
+                # On: the rendement periods the courses would have had if they were not bundled, as lines over the bars
+                #  (see unbundled_scenario) - only available when the course list has a bundle.
+                dbc.Switch(id="unbundled-switch", value=False, label=t["unbundled_switch"], class_name="mb-0"),
                 dcc.Graph(id="rendement-timeline", config=GRAPH_CONFIG),
             ], body=True, class_name="mb-4 shadow-sm"),
             dbc.Card(dbc.CardBody(id="law-application"), class_name="mb-4 shadow-sm"),
@@ -205,6 +213,10 @@ def serve_layout():
         className="bg-body-tertiary min-vh-100",
         children=[
             dcc.Location(id="url", refresh=False),
+            # Night mode: the color mode chosen with the toggle (kept by the browser), and the one in use (that one, or
+            #  the system's preference if none was chosen), which the charts follow.
+            dcc.Store(id="theme-choice", storage_type="local"),
+            dcc.Store(id="theme"),
             html.Div(id="page-content"),
         ],
     )

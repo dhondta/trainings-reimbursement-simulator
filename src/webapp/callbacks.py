@@ -22,7 +22,7 @@ from .helpers import cut_off_runs, date_at, detail_status, explanation_items, fi
                      icon_label, inactivity_runs, info_card, law_links, load_preset_rows, normalize_rows, \
                      presets_for_session, rendement_periods, rows_to_courses, rows_to_csv, slider_marks, \
                      slider_max_months, slider_min_months, sort_rows_by_date, split_at_departure, timeline_horizon, \
-                     value_card, with_forgiven_runs
+                     unbundled_scenario, value_card, with_forgiven_runs
 from .instance import app
 from .report import build_report
 from .strings import STRINGS
@@ -123,32 +123,103 @@ def show_departure_date(slider_value):
     return date_at(slider_value).strftime("%d/%m/%y")
 
 
-def _pattern(status: str) -> dict:
+# Night mode: the toggle switches to the other color mode than the one in use (not as it is rendered, which would fire this
+#  callback, the toggle being added to the page with the main view), and the color mode in use is the one chosen, or the
+#  system's preference if none was (as set before the page renders, see instance.py).
+app.clientside_callback(
+    """function (n_clicks) {
+        if (!n_clicks)
+            return window.dash_clientside.no_update;
+        return document.documentElement.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+    }""",
+    Output("theme-choice", "data"), Input("theme-toggle", "n_clicks"), prevent_initial_call=True)
+app.clientside_callback(
+    """function (choice, _pathname) {
+        if (choice !== "light" && choice !== "dark")
+            choice = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-bs-theme", choice);
+        return choice;
+    }""",
+    Output("theme", "data"), Input("theme-choice", "data"), Input("url", "pathname"))
+
+
+def _pattern(status: str, style: dict) -> dict:
     """ The hatching of the months a period would still have been suspended once forgiven ("lapsed"), none
      otherwise. """
     if status != "lapsed":
         return {}
-    return {"shape": "/", "fgcolor": config.STATUS_COLORS["lapsed"], "bgcolor": config.HATCH_BACKGROUND, "size": 6,
+    return {"shape": "/", "fgcolor": config.STATUS_COLORS["lapsed"], "bgcolor": style["hatch"], "size": 6,
             "solidity": 0.3}
+
+
+def _add_unbundled_lines(fig, t: dict, rows: list[dict], courses, row_order: list[str], cap_mode: str | None,
+                         full_schedule: bool, departure_date, color: str) -> list[str]:
+    """ Overlays on the rendement periods' timeline the periods the courses would have had if they were not bundled
+     (see unbundled_scenario), as lines: solid where rendement is served (or still owed), dotted where suspended. The
+     courses of a bundle get rows of their own, right above their bundle's (a course not triggering the obligation on
+     its own is marked at its end date). Returns the order of the rows, thus completed. """
+    unbundled_courses, runs_by_course, total, owed = unbundled_scenario(rows, cap_mode, full_schedule, departure_date)
+    departure_str = departure_date.strftime("%d/%m/%y")
+    members = {c.code: c.members for c in courses if c.members}
+    order = []
+    for row in row_order:
+        order += [row, *members.pop(row, ())]
+    # The courses of the bundles not triggering the obligation have no row yet.
+    order += [code for c in courses for code in members.get(c.code, ())]
+    # Neither have the courses only triggering it once not bundled (the courses around them in time being different).
+    unbundled_courses = sorted(unbundled_courses, key=lambda c: c.end_date)
+    order += [c.code for c in unbundled_courses if c.code not in order and runs_by_course.get(c.code)]
+    for course in unbundled_courses:
+        if course.code not in order:
+            continue
+        if not (runs := runs_by_course.get(course.code)):
+            fig.add_trace(go.Scatter(x=[course.end_date.isoformat()], y=[course.code], mode="markers",
+                                     marker={"symbol": "x", "size": 10, "color": color}, showlegend=False,
+                                     hovertemplate=f"%{{y}} - {t['unbundled_none']}<extra></extra>"))
+            continue
+        owed_label = t["unbundled_owed"].format(amount=f"{owed.get(course.code, 0):.2f}", date=departure_str)
+        for run in runs:
+            status = run["status"]
+            dates = [run["start"].strftime("%d/%m/%y"), run["end"].strftime("%d/%m/%y")]
+            fig.add_trace(go.Scatter(
+                x=[run["start"].isoformat(), run["end"].isoformat()],
+                y=[course.code, course.code],
+                mode="lines+markers",
+                line={"color": color, "width": 3,
+                      "dash": "solid" if status in ("served", "remaining", "expired") else "dot"},
+                marker={"size": 5, "color": color},
+                showlegend=False,
+                customdata=[dates, dates],
+                hovertemplate=(f"%{{y}} - {t[status].lower()}<br>%{{customdata[0]}} → %{{customdata[1]}}<br>"
+                               f"{owed_label}<extra></extra>"),
+            ))
+    # Legend proxy, with the total owed at the departure date for comparison with the bundled one.
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines", line={"color": color, "width": 3},
+                             name=t["unbundled_legend"].format(amount=f"{total:.2f}")))
+    return order
 
 
 @app.callback(Output("courses-error", "children"), Output("rendement-period-card", "children"),
               Output("total-reimbursement-card", "children"), Output("reimbursement-bar", "figure"),
               Output("rendement-timeline", "figure"), Output("rendement-rate-card", "children"),
-              Output("law-application", "children"), Input("courses-table", "data"),
-              Input("departure-slider", "value"), Input("lang-selector", "value"),
-              Input("full-schedule-switch", "value"), Input("cap-mode-select", "value"))
-def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
+              Output("law-application", "children"), Output("unbundled-switch", "disabled"),
+              Input("courses-table", "data"), Input("departure-slider", "value"), Input("lang-selector", "value"),
+              Input("full-schedule-switch", "value"),
+              Input("cap-mode-select", "value"), Input("unbundled-switch", "value"), Input("theme", "data"))
+def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None, unbundled=False, theme=None):
     t = STRINGS[lang]
+    style = config.CHART_STYLES.get(theme, config.CHART_STYLES["light"])
     departure_date = date_at(slider_value)
     departure_str = departure_date.strftime("%d/%m/%y")
     courses, inactivity, errors = rows_to_courses(rows or [], lang=lang)
     error_text = "\n".join(errors)
     empty_bar = go.Figure()
-    empty_bar.update_layout(title=t["bar_title_default"])
+    empty_bar.update_layout(title=t["bar_title_default"], template=style["template"])
     empty_timeline = go.Figure()
-    empty_timeline.update_layout(title=t["timeline_title_default"])
+    empty_timeline.update_layout(title=t["timeline_title_default"], template=style["template"])
     empty_rate_card = info_card(t["rate_label"], t["rate_none"])
+    # The comparison with the courses not bundled only makes sense with a bundle.
+    no_bundle = not any(c.members for c in courses)
     if not courses:
         no_course_card = info_card(t["period_label"], t["no_valid_courses"])
         return (
@@ -159,6 +230,7 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
             empty_timeline,
             empty_rate_card,
             html.Div(t["no_valid_courses"], className="text-muted"),
+            no_bundle,
         )
     triggering_courses, _audit = determine_triggering_courses(courses)
     periods = rendement_periods(triggering_courses, inactivity, cap_mode)
@@ -172,6 +244,7 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
             empty_timeline,
             empty_rate_card,
             html.Div(t["final_date_none"], className="text-muted"),
+            no_bundle,
         )
     total, details = calculate_reimbursement(periods, departure_date)
     # --------------------------------------------------------
@@ -219,6 +292,7 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
         margin={"t": 60},
         # Same label size on every bar (Plotly would otherwise shrink them to fit, except over the zero-height ones).
         uniformtext={"minsize": 9, "mode": "show"},
+        template=style["template"],
     )
     # --------------------------------------------------------
     # Horizontal bar chart: rendement periods, as accurate month-by-month runs of "served" / "suspended" (a more recent
@@ -237,6 +311,7 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
     # Rows of rendement periods (oldest at the bottom), then one row per period of non-activity (art. 179, §6), with its
     #  exact dates - the end date included, hence the run ending the day after.
     rows_of_runs = [(d["course"], display_timeline_by_course.get(d["course"], []), timedelta(0)) for d in details]
+    row_order = [row for row, _runs, _shift in rows_of_runs]
     rows_of_runs += [(label, runs, timedelta(days=1)) for label, runs in inactivity_runs(inactivity).items()]
     for row, runs, end_shift in rows_of_runs:
         for run in runs:
@@ -250,7 +325,7 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
                     orientation="h",
                     name=t[status],
                     marker_color=config.STATUS_COLORS[status],
-                    marker_pattern=_pattern(status),
+                    marker_pattern=_pattern(status, style),
                     showlegend=False,
                     customdata=[[run["start"].strftime("%d/%m/%y"), (run["end"] - end_shift).strftime("%d/%m/%y")]],
                     hovertemplate=(
@@ -259,12 +334,19 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
                     ),
                 )
             )
+    if unbundled and not no_bundle:
+        row_order = _add_unbundled_lines(timeline_fig, t, rows, courses, row_order, cap_mode, full_schedule,
+                                         departure_date, style["unbundled"])
     timeline_fig.update_layout(
         title=t["timeline_title"],
         xaxis_title=t["xaxis_date"],
         yaxis_title=t["yaxis_course"],
         barmode="stack",
         margin={"t": 60},
+        template=style["template"],
+        # Explicit, as the courses of a bundle (see _add_unbundled_lines) are shown right above their bundle.
+        yaxis={"categoryorder": "array", "categoryarray": row_order + [r for r, _runs, _shift in rows_of_runs
+                                                                       if r not in row_order]},
     )
     timeline_fig.update_xaxes(type="date")
     departure_iso = departure_date.isoformat()
@@ -275,7 +357,7 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
         y0=0,
         y1=1,
         yref="paper",
-        line={"dash": "dash", "color": "black"},
+        line={"dash": "dash", "color": style["departure"]},
     )
     timeline_fig.add_annotation(
         x=departure_iso,
@@ -292,7 +374,7 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
     for status in ("served", "suspended", *(("inactive",) if inactivity else ()), "remaining",
                    *(s for s in ("lapsed", "expired") if s in shown)):
         timeline_fig.add_trace(go.Bar(y=[None], x=[None], marker_color=config.STATUS_COLORS[status],
-                                      marker_pattern=_pattern(status), name=t[status]))
+                                      marker_pattern=_pattern(status, style), name=t[status]))
     total_card = value_card(t["total_label"].format(date=departure_str), f"{total:.2f} €")
     # Rendement period: from the start of the first rendement period to the last day of the final one (following the
     #  full suspension pyramid), on a single line - hence a slightly smaller font, sized to fit the metric cards' column
@@ -329,7 +411,7 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None):
         html.Div(t["explanation_title"], className="fw-bold mb-2"),
         html.Ol([html.Li(item) for item in explanation], className="small text-muted mb-0"),
     ])
-    return error_text, period_card, total_card, bar_fig, timeline_fig, rate_card, law_application
+    return error_text, period_card, total_card, bar_fig, timeline_fig, rate_card, law_application, no_bundle
 
 
 @app.callback(Output("departure-slider", "min"), Output("departure-slider", "max"),
@@ -350,8 +432,9 @@ def update_slider_range(rows, cap_mode, current_value):
               Output("browse-btn", "children"), Output("export-btn", "children"),
               Output("export-pdf-btn", "children"), Output("add-row-btn", "children"),
               Output("courses-table", "columns"), Output("departure-label", "children"),
-              Output("full-schedule-switch", "label"), Output("cap-mode-label", "children"),
-              Output("cap-mode-select", "options"), Input("lang-selector", "value"))
+              Output("full-schedule-switch", "label"), Output("unbundled-switch", "label"),
+              Output("cap-mode-label", "children"),
+              Output("cap-mode-select", "options"), Output("theme-toggle", "title"), Input("lang-selector", "value"))
 def update_static_labels(lang):
     t = STRINGS[lang]
     columns = [
@@ -366,9 +449,9 @@ def update_static_labels(lang):
            t["preset_placeholder"], \
            icon_label("upload", t["browse_label"]), icon_label("download", t["export_label"]), \
            icon_label("file-earmark-pdf", t["export_pdf_label"]), icon_label("plus-lg", t["add_row"]), columns, \
-           t["departure_label"], t["full_schedule_switch"].format(years=config.CAP_YEARS), \
+           t["departure_label"], t["full_schedule_switch"].format(years=config.CAP_YEARS), t["unbundled_switch"], \
            t["cap_mode_label"].format(years=config.CAP_YEARS), \
-           [{"label": t["cap_mode_options"][mode], "value": mode} for mode in CAP_MODES]
+           [{"label": t["cap_mode_options"][mode], "value": mode} for mode in CAP_MODES], t["theme_toggle"]
 
 
 @app.callback(Output("courses-table", "data"), Input("preset-dropdown", "value"), Input("add-row-btn", "n_clicks"),

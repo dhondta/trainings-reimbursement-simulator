@@ -33,3 +33,42 @@
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner input {
     font-family: var(--bs-body-font-family) !important;
 }
+
+/* Night mode (Bootstrap's dark color mode, see the toggle in layout.py): its toggle shows the icon of the other mode. */
+[data-bs-theme="dark"] .theme-icon-dark,
+[data-bs-theme="light"] .theme-icon-light {
+    display: none;
+}
+
+/* Dash core components (slider, dropdown) in night mode: light text and strokes over the dark background. */
+[data-bs-theme="dark"] {
+    --Dash-Fill-Inverse-Strong: var(--bs-body-bg);
+    --Dash-Fill-Disabled: rgba(255, 255, 255, 0.1);
+    --Dash-Fill-Primary-Hover: rgba(255, 255, 255, 0.06);
+    --Dash-Fill-Primary-Active: rgba(255, 255, 255, 0.12);
+    --Dash-Stroke-Strong: rgba(255, 255, 255, 0.45);
+    --Dash-Stroke-Weak: rgba(255, 255, 255, 0.15);
+    --Dash-Text-Strong: rgba(255, 255, 255, 0.9);
+    --Dash-Text-Primary: rgba(255, 255, 255, 0.87);
+    --Dash-Text-Weak: rgba(255, 255, 255, 0.65);
+    --Dash-Text-Disabled: rgba(255, 255, 255, 0.5);
+    --Dash-Tooltip-Background-Color: var(--bs-secondary-bg);
+    --Dash-Tooltip-Border-Color: var(--bs-border-color);
+}
+
+/* Courses table in night mode: the cell being edited in the body color too, rather than DataTable's black. */
+[data-bs-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner input {
+    color: var(--bs-body-color);
+}
+
+/* The theme's primary color (a dark blue) in night mode: the key figures and outline buttons in a light text color
+   instead, as it would hardly stand out against the dark background. */
+[data-bs-theme="dark"] .text-primary {
+    color: var(--bs-emphasis-color) !important;
+}
+[data-bs-theme="dark"] .btn-outline-primary {
+    --bs-btn-color: var(--bs-body-color);
+    --bs-btn-border-color: var(--bs-border-color);
+    --bs-btn-disabled-color: var(--bs-tertiary-color);
+    --bs-btn-disabled-border-color: var(--bs-border-color);
+}

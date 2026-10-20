@@ -14,8 +14,8 @@ from dash import html
 from simulator import BUNDLE_COLUMN, CAP_MODES, CAP_YEARS as LAW_CAP_YEARS, Course, Inactivity, REPAYMENT_MONTHS, \
                       START_DATE_COLUMN, add_months, build_period_status_timeline, build_rendement_periods, \
                       bundle_courses, rendement_end_date, index_period, indexed_max_rate, indexed_min_rate, \
-                      calculate_reimbursement, fraction_to_money, indexed_postpone_remainder, money, parse_date, \
-                      parse_decimal, schedule_rendement
+                      calculate_reimbursement, determine_triggering_courses, fraction_to_money, \
+                      indexed_postpone_remainder, money, parse_date, parse_decimal, schedule_rendement
 
 from . import config
 from .auth import session_dir
@@ -451,6 +451,21 @@ def timeline_horizon(periods) -> date:
     if not periods:
         return date.today()
     return max([rendement_end_date(periods) or date.min] + [add_months(p.start_date, 1) for p in periods])
+
+
+def unbundled_scenario(rows: list[dict], cap_mode: str | None, full_schedule: bool, departure_date: date) \
+        -> tuple[list[Course], dict[str, list[dict]], Decimal, dict[str, Decimal]]:
+    """ The same simulation with every course on its own, its bundle ignored, for comparison with the bundled one: the
+     courses (taken separately), the runs of their rendement periods (as displayed, see with_forgiven_runs and
+     cut_off_runs), the total owed at departure_date and the amount owed per course. A bundle's course may thus no
+     longer trigger the obligation on its own, and the other periods may be suspended differently. """
+    courses, inactivity, _errors = rows_to_courses([{**row, "Bundle": ""} for row in rows])
+    triggering_courses, _audit = determine_triggering_courses(courses)
+    periods = rendement_periods(triggering_courses, inactivity, cap_mode)
+    timeline = build_period_status_timeline(periods, timeline_horizon(periods))
+    runs_by_course = (with_forgiven_runs if full_schedule else cut_off_runs)(periods, timeline)
+    total, details = calculate_reimbursement(periods, departure_date)
+    return courses, runs_by_course, total, {d["course"]: d["reimbursement"] for d in details}
 
 
 def value_card(label: str, value: str | list, *extra: object, font_size: str = "28px") -> list:

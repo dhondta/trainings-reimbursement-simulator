@@ -37,6 +37,11 @@ pio.templates["simulator"] = go.layout.Template(layout={'font': {'family': confi
                                                                  'color': config.THEME_COLORS["body"]},
                                                         'title': {'font': {'size': 16}}})
 pio.templates.default = "plotly_white+simulator"
+# Night mode: the same, in the light text color of Bootstrap's dark mode, over the card's background.
+pio.templates["simulator_dark"] = go.layout.Template(layout={'font': {'family': config.THEME_FONT, 'color': "#DEE2E6"},
+                                                             'title': {'font': {'size': 16}},
+                                                             'paper_bgcolor': "rgba(0, 0, 0, 0)",
+                                                             'plot_bgcolor': "rgba(0, 0, 0, 0)"})
 
 # Order matters: auth defines render_login_view, which layout's render_page needs; callbacks has no such dependency
 #  but is kept last for readability. Each import's only purpose is its side effect of registering Flask routes/Dash

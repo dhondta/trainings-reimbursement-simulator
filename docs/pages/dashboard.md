@@ -45,6 +45,12 @@ first day of every month at midnight while it runs.
   switch above the chart shows instead the rendement periods as they would have been without that maximum: the months
   forgiven are shown in light grey, with the amount forgiven, where they would have been served, i.e. after the months
   the period would still have been suspended behind the more recent ones. The PDF report follows the switch.
+  The "Compare with the courses not bundled" switch (available when the course list has a
+  [bundle](law.md#bundles)) overlays, as dark lines, the rendement periods the courses would have had
+  without their bundles: solid where served (or still owed), dotted where suspended. The courses of a bundle get rows
+  of their own, right above their bundle's, a course not triggering the obligation on its own being marked with a cross
+  at its end date; hovering a line shows the amount the course would owe at the departure date, and the legend the
+  total owed without bundles. The PDF report does not include this comparison.
 - **Key figures** - cards for the total owed, the rendement period (start and end dates) and the current month's
   rendement rate.
 - **Explanation panel** - restates the [criteria of the law](law.md#rules) with the actual numbers of the simulation,
@@ -55,6 +61,8 @@ first day of every month at midnight while it runs.
 - **PDF report** - the reimbursement plan for the selected departure date (key figures, threshold test, amount owed per
   course, both charts and the explanation panel), in the current language.
 - **Languages** - English, French and Dutch (selector in the top-right corner).
+- **Night mode** - a toggle next to the language selector switches the dashboard and its charts to dark colors.
+  The choice is kept by the browser; until one is made, the dashboard follows the system's light or dark mode.
 
 ## Limits
 

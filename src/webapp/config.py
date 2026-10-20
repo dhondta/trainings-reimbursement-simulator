@@ -211,4 +211,11 @@ STATUS_COLORS = {'served': THEME_COLORS["success"], 'suspended': THEME_COLORS["s
 # Months a period would still have been suspended once forgiven ('lapsed', see helpers.with_forgiven_runs): hatched
 #  with the 'lapsed' color over this background, to tell them from the months it is really suspended.
 HATCH_BACKGROUND = "#EEF1F1"
+# The charts per color mode (see the night mode toggle in layout.py): their Plotly template (see server.py), the color of
+#  the marks drawn over the bars (the departure date, the comparison with the courses not bundled), and the background
+#  of the hatching (see HATCH_BACKGROUND).
+CHART_STYLES = {'light': {'template': "plotly_white+simulator", 'departure': "black",
+                          'unbundled': THEME_COLORS["primary"], 'hatch': HATCH_BACKGROUND},
+                'dark': {'template': "plotly_dark+simulator_dark", 'departure': THEME_COLORS["light"],
+                         'unbundled': THEME_COLORS["light"], 'hatch': "#3A4147"}}
 
