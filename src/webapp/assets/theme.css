@@ -56,6 +56,12 @@
     --Dash-Tooltip-Border-Color: var(--bs-border-color);
 }
 
+/* Courses table in night mode: the hovered row in a dark color, rather than DataTable's near-white (seen through the
+   translucent background of the odd rows). */
+[data-bs-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner table {
+    --hover: var(--bs-tertiary-bg);
+}
+
 /* Courses table in night mode: the cell being edited in the body color too, rather than DataTable's black. */
 [data-bs-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner input {
     color: var(--bs-body-color);
@@ -71,4 +77,43 @@
     --bs-btn-border-color: var(--bs-border-color);
     --bs-btn-disabled-color: var(--bs-tertiary-color);
     --bs-btn-disabled-border-color: var(--bs-border-color);
+}
+
+/* Guided tour (see tour.js): Driver.js' popover in the theme's font and colors, following the color mode. */
+.driver-popover.tour-popover {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-family: var(--bs-body-font-family);
+    max-width: 360px;
+}
+.driver-popover.tour-popover .driver-popover-title {
+    font-family: var(--bs-body-font-family);
+    font-size: 1.1rem;
+}
+.driver-popover.tour-popover .driver-popover-description,
+.driver-popover.tour-popover .driver-popover-progress-text {
+    font-family: var(--bs-body-font-family);
+    color: var(--bs-secondary-color);
+}
+.driver-popover.tour-popover .driver-popover-footer button {
+    font-family: var(--bs-body-font-family);
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+    text-shadow: none;
+}
+.driver-popover.tour-popover .driver-popover-close-btn {
+    color: var(--bs-secondary-color);
+}
+.driver-popover.tour-popover .driver-popover-arrow-side-left {
+    border-left-color: var(--bs-body-bg);
+}
+.driver-popover.tour-popover .driver-popover-arrow-side-right {
+    border-right-color: var(--bs-body-bg);
+}
+.driver-popover.tour-popover .driver-popover-arrow-side-top {
+    border-top-color: var(--bs-body-bg);
+}
+.driver-popover.tour-popover .driver-popover-arrow-side-bottom {
+    border-bottom-color: var(--bs-body-bg);
 }

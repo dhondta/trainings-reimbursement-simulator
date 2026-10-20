@@ -201,6 +201,11 @@ THEME_COLORS = {'primary': "#2C3E50", 'secondary': "#95A5A6", 'success': "#18BC9
                 'warning': "#F39C12", 'danger': "#E74C3C", 'body': "#212529", 'border': "#DEE2E6", 'light': "#F8F9FA"}
 THEME_FONT = "Lato, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
 ICONS = dbc.icons.BOOTSTRAP
+# The guided tour (see assets/tour.js), served from the same CDN, and the hidden file flagging, in a user's folder (see
+#  auth.session_dir), that they have already been pointed to it - a hint does on their first session.
+TOUR_SCRIPT = "https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js"
+TOUR_STYLESHEET = "https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css"
+TOUR_FLAG = ".tour-done"
 SLIDER_START = add_months(date(date.today().year, date.today().month, 1), 1)
 # Shared by both charts: rendement periods (served / suspended / inactive / remaining / expired) and amounts per course
 #  (served, i.e. fully paid off / remaining / expired, i.e. forgiven under the maximum total rendement period). The

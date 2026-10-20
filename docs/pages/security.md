@@ -148,6 +148,6 @@ Known limitations, accepted given the application's purpose:
 - **Sessions** - Sessions are stored in the signed cookie itself: signing out cannot invalidate a copy of the cookie
   before it expires. Changing `FLASK_SECRET_KEY` invalidates all sessions at once.
 - **Scripts** - Dash relies on inline scripts, so the Content Security Policy only restricts framing; the Bootstrap
-  theme and icons are loaded from the jsDelivr CDN.
+  theme, its icons and the guided tour's library (Driver.js, at a pinned version) are loaded from the jsDelivr CDN.
 - **CSV export** - A course list is exported as entered: a course named like a spreadsheet formula would be interpreted
   as such by a spreadsheet, which only affects the person who entered it.

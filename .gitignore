@@ -17,3 +17,6 @@ site/
 
 # Documents parsed for designing
 *.pdf
+
+# Guided tour seen, in LOCAL_MODE (see webapp/config.TOUR_FLAG)
+.tour-done

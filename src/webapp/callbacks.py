@@ -11,7 +11,7 @@ from pathlib import Path
 
 import dash
 import plotly.graph_objects as go
-from dash import Input, Output, State, dcc, html, no_update
+from dash import ClientsideFunction, Input, Output, State, dcc, html, no_update
 
 from simulator import CAP_MODES, active_rendement, build_period_status_timeline, calculate_reimbursement, \
                       determine_triggering_courses, load_courses, money
@@ -22,7 +22,7 @@ from .helpers import cut_off_runs, date_at, detail_status, explanation_items, fi
                      icon_label, inactivity_runs, info_card, law_links, load_preset_rows, normalize_rows, \
                      presets_for_session, rendement_periods, rows_to_courses, rows_to_csv, slider_marks, \
                      slider_max_months, slider_min_months, sort_rows_by_date, split_at_departure, timeline_horizon, \
-                     unbundled_scenario, value_card, with_forgiven_runs
+                     tour_flag, unbundled_scenario, value_card, with_forgiven_runs
 from .instance import app
 from .report import build_report
 from .strings import STRINGS
@@ -141,6 +141,27 @@ app.clientside_callback(
         return choice;
     }""",
     Output("theme", "data"), Input("theme-choice", "data"), Input("url", "pathname"))
+
+
+# Guided tour (see assets/tour.js): requested by the tour button (pointed to by a hint on a first session), then run
+#  with the controls' current state, so that it can set them back once it ends.
+app.clientside_callback(ClientsideFunction("tour", "request"), Output("tour-run", "data"),
+                        Input("tour-auto", "data"), Input("tour-btn", "n_clicks"), Input("tour-texts", "data"))
+app.clientside_callback(ClientsideFunction("tour", "start"), Output("tour-finished", "data"),
+                        Input("tour-run", "data"), State("tour-texts", "data"), State("departure-slider", "value"),
+                        State("tour-slider-range", "data"), State("cap-mode-select", "value"),
+                        State("full-schedule-switch", "value"), State("unbundled-switch", "value"),
+                        State("unbundled-switch", "disabled"), prevent_initial_call=True)
+
+
+# Without any output: tour-auto, which the hint follows, would otherwise close a cycle through the tour's callbacks (the
+#  hint is anyway shown once per page, see assets/tour.js).
+@app.callback(Input("tour-finished", "data"), prevent_initial_call=True)
+def mark_tour_done(_finished):
+    """ Once the hint of a first session is dismissed (or the guided tour ends), it is no longer shown to this
+     user. """
+    if (flag := tour_flag()) is not None:
+        flag.touch()
 
 
 def _pattern(status: str, style: dict) -> dict:
@@ -416,14 +437,15 @@ def update_charts(rows, slider_value, lang, full_schedule=False, cap_mode=None, 
 
 @app.callback(Output("departure-slider", "min"), Output("departure-slider", "max"),
               Output("departure-slider", "marks"), Output("departure-slider", "value"),
-              Input("courses-table", "data"), Input("cap-mode-select", "value"), State("departure-slider", "value"))
+              Output("tour-slider-range", "data"), Input("courses-table", "data"), Input("cap-mode-select", "value"), State("departure-slider", "value"))
 def update_slider_range(rows, cap_mode, current_value):
     courses, inactivity, _errors = rows_to_courses(rows or [])
     triggering_courses, _audit = determine_triggering_courses(courses)
     periods = rendement_periods(triggering_courses, inactivity, cap_mode)
     min_months, max_months = slider_min_months(periods), slider_max_months(periods)
     value = max(min_months, min(current_value or 0, max_months))
-    return min_months, max_months, slider_marks(min_months, max_months), value
+    # The range is also given to the guided tour, which shows its first, middle and last dates.
+    return min_months, max_months, slider_marks(min_months, max_months), value, [min_months, max_months]
 
 
 @app.callback(Output("language-label", "children"), Output("app-title", "children"),
@@ -434,7 +456,8 @@ def update_slider_range(rows, cap_mode, current_value):
               Output("courses-table", "columns"), Output("departure-label", "children"),
               Output("full-schedule-switch", "label"), Output("unbundled-switch", "label"),
               Output("cap-mode-label", "children"),
-              Output("cap-mode-select", "options"), Output("theme-toggle", "title"), Input("lang-selector", "value"))
+              Output("cap-mode-select", "options"), Output("theme-toggle", "title"), Output("tour-btn", "title"),
+              Output("tour-texts", "data"), Input("lang-selector", "value"))
 def update_static_labels(lang):
     t = STRINGS[lang]
     columns = [
@@ -451,7 +474,16 @@ def update_static_labels(lang):
            icon_label("file-earmark-pdf", t["export_pdf_label"]), icon_label("plus-lg", t["add_row"]), columns, \
            t["departure_label"], t["full_schedule_switch"].format(years=config.CAP_YEARS), t["unbundled_switch"], \
            t["cap_mode_label"].format(years=config.CAP_YEARS), \
-           [{"label": t["cap_mode_options"][mode], "value": mode} for mode in CAP_MODES], t["theme_toggle"]
+           [{"label": t["cap_mode_options"][mode], "value": mode} for mode in CAP_MODES], t["theme_toggle"], \
+           t["tour_toggle"], _tour_texts(t)
+
+
+def _tour_texts(t: dict) -> dict:
+    """ The guided tour's texts in the selected language, with the maximum total rendement period filled in (the
+     departure date and the total, which change as it goes, are filled in by the tour itself, see assets/tour.js). """
+    tour = t["tour"]
+    return {**tour, "steps": {key: [text.format(years=config.CAP_YEARS, date="{date}", total="{total}")
+                                    for text in texts] for key, texts in tour["steps"].items()}}
 
 
 @app.callback(Output("courses-table", "data"), Input("preset-dropdown", "value"), Input("add-row-btn", "n_clicks"),

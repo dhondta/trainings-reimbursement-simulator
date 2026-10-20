@@ -107,6 +107,76 @@ STRINGS = {
         "full_schedule_switch": "Calendrier complet, sans la limite de {years} ans (Art. 179, §5)",
         "unbundled_switch": "Comparer avec les formations non groupées",
         "theme_toggle": "Mode nuit",
+        "tour_toggle": "Visite guidée",
+        "tour": {
+            "next": "Suivant", "prev": "Précédent", "done": "Terminer", "progress": "{{current}} sur {{total}}",
+            "hint": "Cliquez ici pour une visite guidée",
+            "steps": {
+                "rules": ["Les règles",
+                          "Voici les critères de l'Art. 179 appliqués par le simulateur : quand une formation "
+                          "déclenche une période de rendement, combien de temps elle dure, et ce qui est dû en partant"
+                          " avant son terme."],
+                "preset": ["Charger un preset",
+                           "Choisissez un ensemble de formations dans la liste : les exemples fournis, et les fichiers"
+                           " CSV que vous avez importés."],
+                "import": ["Importer un CSV",
+                           "Chargez votre propre liste de formations depuis un fichier CSV (Course, Price, End Date, "
+                           "et facultativement Bundle et Start Date). Il est conservé dans votre dossier privé pour "
+                           "vos prochaines sessions."],
+                "export": ["Exporter en CSV",
+                           "Téléchargez le tableau tel qu'il est, dans le même format CSV, pour le modifier ailleurs "
+                           "ou le réimporter plus tard."],
+                "pdf": ["Exporter en PDF",
+                        "Téléchargez le plan de remboursement à la date de départ choisie : chiffres clés, test du "
+                        "seuil, montant dû par formation, les deux graphiques et l'explication."],
+                "add_row": ["Ajouter une ligne",
+                            "Ajoutez une formation au bas du tableau, puis complétez son code, son prix et sa date de "
+                            "fin (une ligne avec une date de début et sans prix est une période de non-activité). "
+                            "Chaque ligne peut être supprimée avec × ; le tableau reste trié par date de fin."],
+                "slider_start": ["Date de départ envisagée",
+                                 "Déplacez le curseur pour choisir quand vous quitteriez les Forces armées. Au début "
+                                 "de la première période de rendement ({date}), seules les formations déjà suivies "
+                                 "sont dues, encore en entier : {total}."],
+                "slider_middle": ["À mi-parcours",
+                                  "Plus tard ({date}), une partie du rendement a été prestée, et le montant dû a "
+                                  "diminué : {total}."],
+                "slider_end": ["Entièrement soldé",
+                               "Au bout du curseur ({date}), chaque période de rendement est prestée ou remise : "
+                               "{total}."],
+                "cap_bunch": ["La limite de {years} ans, par groupe",
+                              "Au-delà de {years} ans de périodes de rendement cumulées, le reste est remis (Art. 179,"
+                              " §5). Comptée par groupe de périodes qui se suivent sans interruption, le total au "
+                              "{date} est de {total}."],
+                "cap_period": ["La limite de {years} ans, par période",
+                               "Comptée plutôt par période de rendement, chaque période est limitée séparément : le "
+                               "total au {date} devient {total}."],
+                "bar": ["Montant par formation",
+                        "Le montant dégressif encore dû par formation à la date de départ : en rouge s'il est encore "
+                        "dû, en gris clair s'il est remis, en vert une fois entièrement presté."],
+                "figures": ["Chiffres clés",
+                            "La période de rendement complète, le total à rembourser à la date de départ, et le "
+                            "rendement presté ce mois-ci, par la formation en cours de prestation."],
+                "timeline": ["Périodes de rendement",
+                             "La période de rendement de chaque formation, mois par mois : prestée (vert), suspendue "
+                             "derrière une formation plus récente (gris), et restant à prester après la date de départ"
+                             " (rouge)."],
+                "full_schedule": ["Calendrier complet",
+                                  "Ce commutateur montre les périodes telles qu'elles auraient été sans la limite de "
+                                  "{years} ans : les mois remis apparaissent en gris clair, avec le montant remis."],
+                "unbundled": ["Formations non groupées",
+                              "Ce commutateur compare les formations groupées aux mêmes formations prises séparément :"
+                              " les lignes foncées montrent les périodes de rendement qu'elles auraient eues, pleines "
+                              "quand elles sont prestées, pointillées quand elles sont suspendues."],
+                "unbundled_none": ["Formations non groupées",
+                                   "Ce commutateur compare les formations groupées aux mêmes formations prises "
+                                   "séparément. Il est disponible dès que le tableau contient un groupe (la colonne "
+                                   "facultative Bundle)."],
+                "explanation": ["Explication",
+                                "Enfin, comment les règles s'appliquent à cette simulation, avec ses propres chiffres "
+                                "à la date de départ. Vous pouvez relancer cette visite à tout moment avec le bouton ?"
+                                " en haut de la page."],
+            },
+        },
         "unbundled_legend": "Formations non groupées (total : {amount} €)",
         "unbundled_none": "ne déclenche pas l'obligation seule",
         "unbundled_owed": "{amount} € à rembourser au {date}",
@@ -134,7 +204,8 @@ STRINGS = {
         "departure_marker": "Départ",
         "rate_label": "Taux de rendement",
         "rate_detail": "{code} - {month}",
-        "month_abbr": ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."],
+        "month_abbr": ["janv.",
+                       "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."],
         "thousands_sep": "\u00a0",
         "rate_pct": "{pct}% du montant restant",
         "rate_none": "Aucune formation n'est prestée ce mois-ci.",
@@ -280,6 +351,78 @@ STRINGS = {
         "full_schedule_switch": "Volledige planning, zonder de limiet van {years} jaar (Art. 179, §5)",
         "unbundled_switch": "Vergelijken met de niet-gebundelde opleidingen",
         "theme_toggle": "Nachtmodus",
+        "tour_toggle": "Rondleiding",
+        "tour": {
+            "next": "Volgende", "prev": "Vorige", "done": "Klaar", "progress": "{{current}} van {{total}}",
+            "hint": "Klik hier voor een rondleiding",
+            "steps": {
+                "rules": ["De regels",
+                          "Dit zijn de criteria van Art. 179 die de simulator toepast: wanneer een opleiding een "
+                          "rendementsperiode activeert, hoe lang die duurt, en wat verschuldigd is bij vertrek voor "
+                          "het einde ervan."],
+                "preset": ["Een preset laden",
+                           "Kies een reeks opleidingen uit de lijst: de meegeleverde voorbeelden, en de CSV-bestanden "
+                           "die u hebt geïmporteerd."],
+                "import": ["CSV importeren",
+                           "Laad uw eigen lijst van opleidingen uit een CSV-bestand (Course, Price, End Date, en "
+                           "optioneel Bundle en Start Date). Het wordt in uw privémap bewaard voor uw volgende "
+                           "sessies."],
+                "export": ["Exporteren naar CSV",
+                           "Download de tabel zoals ze nu is, in hetzelfde CSV-formaat, om ze elders te bewerken of "
+                           "later opnieuw te importeren."],
+                "pdf": ["Exporteren naar PDF",
+                        "Download het terugbetalingsplan voor de gekozen vertrekdatum: kerncijfers, drempeltest, "
+                        "verschuldigd bedrag per opleiding, beide grafieken en de uitleg."],
+                "add_row": ["Rij toevoegen",
+                            "Voeg een opleiding toe onderaan de tabel en vul dan haar code, prijs en einddatum in (een"
+                            " rij met een begindatum en zonder prijs is een periode van non-activiteit). Elke rij kan "
+                            "met × verwijderd worden; de tabel blijft gesorteerd op einddatum."],
+                "slider_start": ["Beoogde vertrekdatum",
+                                 "Verschuif de schuifregelaar om te kiezen wanneer u de Krijgsmacht zou verlaten. Bij "
+                                 "het begin van de eerste rendementsperiode ({date}) zijn enkel de reeds gevolgde "
+                                 "opleidingen verschuldigd, nog volledig: {total}."],
+                "slider_middle": ["Halverwege",
+                                  "Later ({date}) is een deel van het rendement gepresteerd, en is het verschuldigde "
+                                  "bedrag gedaald: {total}."],
+                "slider_end": ["Volledig afgehandeld",
+                               "Aan het einde van de schuifregelaar ({date}) is elke rendementsperiode gepresteerd of "
+                               "kwijtgescholden: {total}."],
+                "cap_bunch": ["De limiet van {years} jaar, per groep",
+                              "Na {years} jaar gecumuleerde rendementsperiodes wordt de rest kwijtgescholden (Art. "
+                              "179, §5). Geteld per groep van periodes die elkaar zonder onderbreking opvolgen, is het"
+                              " totaal op {date} {total}."],
+                "cap_period": ["De limiet van {years} jaar, per periode",
+                               "Geteld per rendementsperiode wordt elke periode afzonderlijk beperkt: het totaal op "
+                               "{date} wordt {total}."],
+                "bar": ["Bedrag per opleiding",
+                        "Het degressieve bedrag dat per opleiding nog verschuldigd is op de vertrekdatum: rood als het"
+                        " nog verschuldigd is, lichtgrijs als het kwijtgescholden is, groen zodra het volledig "
+                        "gepresteerd is."],
+                "figures": ["Kerncijfers",
+                            "De volledige rendementsperiode, het terug te betalen totaal op de vertrekdatum, en het "
+                            "rendement dat deze maand gepresteerd wordt, door de opleiding die op dat moment "
+                            "gepresteerd wordt."],
+                "timeline": ["Rendementsperiodes",
+                             "De rendementsperiode van elke opleiding, maand per maand: gepresteerd (groen), geschorst"
+                             " achter een recentere opleiding (grijs), en nog te presteren na de vertrekdatum (rood)."],
+                "full_schedule": ["Volledige planning",
+                                  "Deze schakelaar toont de periodes zoals ze zouden zijn geweest zonder de limiet van"
+                                  " {years} jaar: de kwijtgescholden maanden verschijnen in lichtgrijs, met het "
+                                  "kwijtgescholden bedrag."],
+                "unbundled": ["Niet-gebundelde opleidingen",
+                              "Deze schakelaar vergelijkt gebundelde opleidingen met dezelfde opleidingen "
+                              "afzonderlijk: de donkere lijnen tonen de rendementsperiodes die ze zouden hebben gehad,"
+                              " doorlopend wanneer gepresteerd, gestippeld wanneer geschorst."],
+                "unbundled_none": ["Niet-gebundelde opleidingen",
+                                   "Deze schakelaar vergelijkt gebundelde opleidingen met dezelfde opleidingen "
+                                   "afzonderlijk. Hij is beschikbaar zodra de tabel een bundel bevat (de optionele "
+                                   "kolom Bundle)."],
+                "explanation": ["Uitleg",
+                                "Tot slot, hoe de regels op deze simulatie van toepassing zijn, met haar eigen cijfers"
+                                " op de vertrekdatum. U kunt deze rondleiding altijd opnieuw starten met de knop ? "
+                                "bovenaan de pagina."],
+            },
+        },
         "unbundled_legend": "Niet-gebundelde opleidingen (totaal: {amount} €)",
         "unbundled_none": "activeert de verplichting niet op zich",
         "unbundled_owed": "{amount} € terug te betalen op {date}",
@@ -451,6 +594,72 @@ STRINGS = {
         "full_schedule_switch": "Full schedule, without the {years}-year limit (Art. 179, §5)",
         "unbundled_switch": "Compare with the courses not bundled",
         "theme_toggle": "Night mode",
+        "tour_toggle": "Guided tour",
+        "tour": {
+            "next": "Next", "prev": "Previous", "done": "Done", "progress": "{{current}} of {{total}}",
+            "hint": "Click here for a guided tour",
+            "steps": {
+                "rules": ["The rules",
+                          "These are the criteria of Art. 179 that the simulator applies: when a course triggers a "
+                          "rendement period, how long it lasts, and what is owed when leaving before its end."],
+                "preset": ["Load a preset",
+                           "Pick a set of courses from the list: the examples provided, and the CSV files you "
+                           "imported."],
+                "import": ["Import a CSV",
+                           "Load your own course list from a CSV file (Course, Price, End Date, and optionally Bundle "
+                           "and Start Date). It is kept in your private folder for your next sessions."],
+                "export": ["Export to CSV",
+                           "Download the table as it is, in the same CSV format, to edit it elsewhere or import it "
+                           "again later."],
+                "pdf": ["Export to PDF",
+                        "Download the reimbursement plan for the selected departure date: key figures, threshold test,"
+                        " amount owed per course, both charts and the explanation."],
+                "add_row": ["Add a row",
+                            "Add a course at the bottom of the table, then fill in its code, price and end date (a row"
+                            " with a start date and no price is a period of non-activity). Any row can be deleted with"
+                            " ×; the table stays sorted by end date."],
+                "slider_start": ["Planned departure date",
+                                 "Move the slider to choose when you would leave the Armed Forces. At the start of the"
+                                 " first rendement period ({date}), only the courses already followed are owed, still "
+                                 "in full: {total}."],
+                "slider_middle": ["Halfway",
+                                  "Later on ({date}), part of the rendement has been served, and the amount owed has "
+                                  "decreased: {total}."],
+                "slider_end": ["Fully resolved",
+                               "At the end of the slider ({date}), every rendement period is served or forgiven: "
+                               "{total}."],
+                "cap_bunch": ["The {years}-year limit, per bunch",
+                              "Beyond {years} years of cumulated rendement periods, the rest is forgiven (Art. 179, "
+                              "§5). Counted per bunch of periods following each other without interruption, the total "
+                              "on {date} is {total}."],
+                "cap_period": ["The {years}-year limit, per period",
+                               "Counted per rendement period instead, each period is limited on its own: the total on "
+                               "{date} becomes {total}."],
+                "bar": ["Amount per course",
+                        "The degressive amount still owed per course at the departure date: red if still owed, light "
+                        "grey if forgiven, green once fully served."],
+                "figures": ["Key figures",
+                            "The whole rendement period, the total to reimburse at the departure date, and the "
+                            "rendement served this month, by the course being served."],
+                "timeline": ["Rendement periods",
+                             "Each course's rendement period, month by month: served (green), suspended behind a more "
+                             "recent course (grey), and still to serve after the departure date (red)."],
+                "full_schedule": ["Full schedule",
+                                  "This switch shows the periods as they would have been without the {years}-year "
+                                  "limit: the months forgiven appear in light grey, with the amount forgiven."],
+                "unbundled": ["Courses not bundled",
+                              "This switch compares the bundled courses with the same courses taken separately: the "
+                              "dark lines show the rendement periods they would have had, solid when served, dotted "
+                              "when suspended."],
+                "unbundled_none": ["Courses not bundled",
+                                   "This switch compares the bundled courses with the same courses taken separately. "
+                                   "It is available once the table has a bundle (the optional Bundle column)."],
+                "explanation": ["Explanation",
+                                "Finally, how the rules apply to this simulation, with its own figures at the "
+                                "departure date. You can replay this tour anytime with the ? button at the top of the "
+                                "page."],
+            },
+        },
         "unbundled_legend": "Courses not bundled (total: {amount} €)",
         "unbundled_none": "does not trigger the obligation on its own",
         "unbundled_owed": "{amount} € to reimburse on {date}",

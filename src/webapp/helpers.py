@@ -240,6 +240,13 @@ def presets_for_session() -> dict[str, Path]:
     return presets
 
 
+def tour_flag() -> Path | None:
+    """ The file flagging that the user has already seen the guided tour, in their own folder (see TOUR_FLAG), or None
+     if nobody is signed in. """
+    d = session_dir()
+    return None if d is None else d / config.TOUR_FLAG
+
+
 def chosen_cap_mode(cap_mode: str | None) -> str:
     """ The cap mode chosen in the dashboard (art. 179, §5), or the app-wide one (--cap-mode) if none or not a valid one
      (the value comes from the browser). """

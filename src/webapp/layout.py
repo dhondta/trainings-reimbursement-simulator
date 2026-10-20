@@ -9,7 +9,7 @@ from simulator import CAP_MODES
 
 from . import config
 from .auth import render_login_view, signed_in_identity
-from .helpers import icon_label, law_links, load_preset_rows, presets_for_session, slider_marks
+from .helpers import icon_label, law_links, load_preset_rows, presets_for_session, slider_marks, tour_flag
 from .instance import app
 from .strings import STRINGS
 
@@ -27,6 +27,10 @@ def render_main_view(identity: str | None):
     #  make "Sign out" actually sign the visitor out - hide the button rather than offer something that won't work.
     can_sign_out = identity and config.AUTH_METHOD != "basic"
     t = STRINGS[config.DEFAULT_LANG]
+    # A hint points to the guided tour on the user's first session (see assets/tour.js and mark_tour_done).
+    flag = tour_flag()
+    tour_stores = [dcc.Store(id="tour-auto", data=flag is not None and not flag.exists()), dcc.Store(id="tour-run"),
+                   dcc.Store(id="tour-texts"), dcc.Store(id="tour-slider-range"), dcc.Store(id="tour-finished")]
     navbar = dbc.Navbar(
         dbc.Container([
             html.Div(className="navbar-brand text-wrap lh-sm", children=[
@@ -49,6 +53,8 @@ def render_main_view(identity: str | None):
                         label_class_name="btn btn-sm btn-outline-light",
                         label_checked_class_name="active",
                     ),
+                    dbc.Button(html.I(className="bi bi-question-lg"), id="tour-btn", n_clicks=0, size="sm",
+                               color="light", outline=True, title=t["tour_toggle"]),
                     # Both icons, the one of the other color mode only being shown (see theme.css).
                     dbc.Button([html.I(className="bi bi-moon-stars-fill theme-icon-dark"),
                                 html.I(className="bi bi-sun-fill theme-icon-light")], id="theme-toggle", n_clicks=0,
@@ -65,6 +71,7 @@ def render_main_view(identity: str | None):
     law_summary = dbc.Card(
         dbc.CardBody(html.Ul([html.Li(c) for c in t["law_criteria"]], id="law-summary",
                              className="mb-0 small text-muted fst-italic")),
+        id="law-summary-card",
         class_name="mb-4 shadow-sm",
         style={"borderLeft": f"4px solid {config.THEME_COLORS['info']}"},
     )
@@ -134,7 +141,7 @@ def render_main_view(identity: str | None):
                     html.Span(id="departure-date-label", className="fs-4 fw-bold text-primary"),
                     # How the maximum total rendement period applies (art. 179, §5), per visitor: the app-wide
                     #  --cap-mode is only its initial value.
-                    html.Div(className="d-flex align-items-baseline gap-2 ms-auto", children=[
+                    html.Div(id="cap-mode-group", className="d-flex align-items-baseline gap-2 ms-auto", children=[
                         html.Label(t["cap_mode_label"].format(years=config.CAP_YEARS), id="cap-mode-label",
                                    htmlFor="cap-mode-select", className="small text-nowrap"),
                         dbc.Select(id="cap-mode-select", value=config.CAP_MODE, size="sm",
@@ -154,6 +161,7 @@ def render_main_view(identity: str | None):
                 allow_direct_input=False,  # the raw month index would mean nothing to users (the date is shown above)
             ),
         ]),
+        id="departure-card",
         class_name="mb-4 shadow-sm",
     )
     # The metric cards' column is sized (xl=3 / lg=4, full width below) to keep the rendement period's dates on a single
@@ -164,9 +172,10 @@ def render_main_view(identity: str | None):
         class_name="g-3 mb-4",
         children=[
             dbc.Col(dbc.Card(dcc.Graph(id="reimbursement-bar", config=GRAPH_CONFIG), body=True,
-                             class_name="h-100 shadow-sm"), xl=9, lg=8),
+                             id="reimbursement-bar-card", class_name="h-100 shadow-sm"), xl=9, lg=8),
             dbc.Col(
                 html.Div(
+                    id="metric-cards",
                     className="d-flex flex-column justify-content-center gap-3 h-100",
                     children=[metric_card("rendement-period-card"), metric_card("total-reimbursement-card"),
                               metric_card("rendement-rate-card")],
@@ -176,6 +185,7 @@ def render_main_view(identity: str | None):
         ],
     )
     return html.Div([
+        *tour_stores,
         navbar,
         dbc.Container([
             law_summary,
@@ -191,7 +201,7 @@ def render_main_view(identity: str | None):
                 #  (see unbundled_scenario) - only available when the course list has a bundle.
                 dbc.Switch(id="unbundled-switch", value=False, label=t["unbundled_switch"], class_name="mb-0"),
                 dcc.Graph(id="rendement-timeline", config=GRAPH_CONFIG),
-            ], body=True, class_name="mb-4 shadow-sm"),
+            ], body=True, id="timeline-card", class_name="mb-4 shadow-sm"),
             dbc.Card(dbc.CardBody(id="law-application"), class_name="mb-4 shadow-sm"),
         ]),
     ])

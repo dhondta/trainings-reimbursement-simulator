@@ -61,6 +61,12 @@ first day of every month at midnight while it runs.
 - **PDF report** - the reimbursement plan for the selected departure date (key figures, threshold test, amount owed per
   course, both charts and the explanation panel), in the current language.
 - **Languages** - English, French and Dutch (selector in the top-right corner).
+- **Guided tour** - the "?" button of the navbar starts a tour of the dashboard: the rules, the actions of the course
+  table, three departure dates (the start of the first rendement period, halfway, and the date everything is
+  resolved), both cap modes, the charts and key figures, the switches of the rendement periods' chart and the
+  explanation panel. It sets these controls as it goes, and back as they were once it ends (finished, or interrupted
+  with its cross). On a user's first session, a hint points to that button; once dismissed, it is not shown again to
+  that user (a hidden `.tour-done` file in their folder, or in `src/` with `--local`).
 - **Night mode** - a toggle next to the language selector switches the dashboard and its charts to dark colors.
   The choice is kept by the browser; until one is made, the dashboard follows the system's light or dark mode.
 
