@@ -57,13 +57,16 @@
 }
 
 /* Courses table in night mode: the hovered row in a dark color, rather than DataTable's near-white (seen through the
-   translucent background of the odd rows). */
+   translucent background of the odd rows), and the text of the cells in the body color, rather than DataTable's
+   near-black (e.g. while typing into a selected cell, before it gets the focus). */
 [data-bs-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner table {
     --hover: var(--bs-tertiary-bg);
+    --text-color: var(--bs-body-color);
 }
 
-/* Courses table in night mode: the cell being edited in the body color too, rather than DataTable's black. */
-[data-bs-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner input {
+/* Courses table in night mode: the cell being edited in the body color too (DataTable's input rule, whose :not()
+   selectors would otherwise outrank this one). */
+[data-bs-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner input:not([type=radio]):not([type=checkbox]):not(.unfocused) {
     color: var(--bs-body-color);
 }
 

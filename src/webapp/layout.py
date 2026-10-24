@@ -128,6 +128,8 @@ def render_main_view(identity: str | None):
                      "border": f"1px solid {config.THEME_COLORS['info']}"},
                 ],
             ),
+            # The bundles already entered, suggested while typing in the Bundle column (see assets/bundles.js).
+            dcc.Store(id="bundle-names"),
             html.Div(id="courses-error", className="text-danger small mt-2", style={"whiteSpace": "pre-line"}),
         ]),
         class_name="mb-4 shadow-sm",

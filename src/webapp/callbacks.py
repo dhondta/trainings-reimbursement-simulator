@@ -143,6 +143,11 @@ app.clientside_callback(
     Output("theme", "data"), Input("theme-choice", "data"), Input("url", "pathname"))
 
 
+# Bundle column: the bundles already entered, suggested while typing (see assets/bundles.js).
+app.clientside_callback(ClientsideFunction("bundles", "names"), Output("bundle-names", "data"),
+                        Input("courses-table", "data"))
+
+
 # Guided tour (see assets/tour.js): requested by the tour button (pointed to by a hint on a first session), then run
 #  with the controls' current state, so that it can set them back once it ends.
 app.clientside_callback(ClientsideFunction("tour", "request"), Output("tour-run", "data"),
